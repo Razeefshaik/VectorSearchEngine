@@ -10,9 +10,17 @@ algorithm and every design decision.
 ## Build
 
 ```bash
-cmake -B build && cmake --build build -j
-./build/hnsw_benchmark 20000 128     # recall + latency sweep
-./build/hnsw_stress                  # concurrent insert/query
+$env:PATH = "S:\CLion 2024.3.1.1\bin\mingw\bin;" + $env:PATH   # runtime DLLs (libstdc++-6.dll etc.) must be on PATH
+
+& "S:\CLion 2024.3.1.1\bin\cmake\win\x64\bin\cmake.exe" -B build -G Ninja `
+  -DCMAKE_MAKE_PROGRAM="S:/CLion 2024.3.1.1/bin/ninja/win/x64/ninja.exe" `
+  -DCMAKE_CXX_COMPILER="S:/CLion 2024.3.1.1/bin/mingw/bin/g++.exe"
+
+& "S:\CLion 2024.3.1.1\bin\cmake\win\x64\bin\cmake.exe" --build build -j
+
+.\build\hnsw_benchmark.exe 20000 128   # recall + latency sweep
+.\build\hnsw_stress.exe                # concurrent insert/query
+
 ```
 
 Without cmake:

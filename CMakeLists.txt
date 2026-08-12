@@ -12,17 +12,17 @@ endif()
 add_compile_options(-O3 -march=native -Wall -Wextra)
 
 # Shared library -- this is what cgo links against.
-add_library(hnsw SHARED src/hnsw_c.cpp)
-target_include_directories(hnsw PUBLIC include)
+add_library(hnsw SHARED hnsw_c.cpp)
+target_include_directories(hnsw PUBLIC .)
 find_package(Threads REQUIRED)
 target_link_libraries(hnsw PUBLIC Threads::Threads)
 
 # Benchmark / correctness harness.
-add_executable(hnsw_benchmark src/benchmark.cpp)
-target_include_directories(hnsw_benchmark PRIVATE include)
+add_executable(hnsw_benchmark benchmark.cpp)
+target_include_directories(hnsw_benchmark PRIVATE .)
 target_link_libraries(hnsw_benchmark PRIVATE Threads::Threads)
 
 # Concurrency stress test.
-add_executable(hnsw_stress src/stress.cpp)
-target_include_directories(hnsw_stress PRIVATE include)
+add_executable(hnsw_stress stress.cpp)
+target_include_directories(hnsw_stress PRIVATE .)
 target_link_libraries(hnsw_stress PRIVATE Threads::Threads)

@@ -1,10 +1,3 @@
-// hnsw_c.cpp -- implementation of the C ABI.
-//
-// The one rule here: no exception may cross the extern "C" boundary. An
-// exception unwinding into Go's stack is undefined behaviour and will crash the
-// process in ways that are extremely unpleasant to debug. Every entry point is
-// wrapped.
-
 #include "hnsw_c.h"
 #include "hnsw.hpp"
 

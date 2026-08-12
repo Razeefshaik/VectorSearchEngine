@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <random>
@@ -155,7 +156,7 @@ int main(int argc, char** argv) {
     index.unmarkDeleted(victim);
 
     // ---- persistence roundtrip --------------------------------------------
-    const std::string path = "/tmp/hnsw_index.bin";
+    const std::string path = (std::filesystem::temp_directory_path() / "hnsw_index.bin").string();
     index.save(path);
     auto reloaded = Index::load(path);
 
