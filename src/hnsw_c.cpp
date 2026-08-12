@@ -1,3 +1,10 @@
+// hnsw_c.cpp -- implementation of the C ABI.
+//
+// The one rule here: no exception may cross the extern "C" boundary. An
+// exception unwinding into Go's stack is undefined behaviour and will crash the
+// process in ways that are extremely unpleasant to debug. Every entry point is
+// wrapped.
+
 #include "hnsw_c.h"
 #include "hnsw.hpp"
 
@@ -42,8 +49,10 @@ int hnsw_add(HnswIndex* idx, const float* vec, uint64_t label) {
         return HNSW_OK;
     } catch (const std::exception& e) {
         setError(e.what());
-        return std::string(e.what()).find("full") != std::string::npos
-                   ? HNSW_ERR_FULL : HNSW_ERR_GENERIC;
+        std::string msg = e.what();
+        if (msg.find("full") != std::string::npos)      return HNSW_ERR_FULL;
+        if (msg.find("duplicate") != std::string::npos) return HNSW_ERR_DUPLICATE;
+        return HNSW_ERR_GENERIC;
     } catch (...) {
         setError("unknown error in hnsw_add");
         return HNSW_ERR_GENERIC;
@@ -75,7 +84,9 @@ int hnsw_search(HnswIndex* idx, const float* query, size_t k, size_t ef,
 int hnsw_mark_deleted(HnswIndex* idx, uint64_t label) {
     if (!idx) { setError("null index"); return HNSW_ERR_NULL; }
     try {
-        return cast(idx)->markDeleted(label) ? HNSW_OK : HNSW_ERR_NOT_FOUND;
+        if (cast(idx)->markDeleted(label)) return HNSW_OK;
+        setError("label not found or already deleted");
+        return HNSW_ERR_NOT_FOUND;
     } catch (...) {
         setError("unknown error in hnsw_mark_deleted");
         return HNSW_ERR_GENERIC;
@@ -85,7 +96,9 @@ int hnsw_mark_deleted(HnswIndex* idx, uint64_t label) {
 int hnsw_unmark_deleted(HnswIndex* idx, uint64_t label) {
     if (!idx) { setError("null index"); return HNSW_ERR_NULL; }
     try {
-        return cast(idx)->unmarkDeleted(label) ? HNSW_OK : HNSW_ERR_NOT_FOUND;
+        if (cast(idx)->unmarkDeleted(label)) return HNSW_OK;
+        setError("label not found or not currently deleted");
+        return HNSW_ERR_NOT_FOUND;
     } catch (...) {
         setError("unknown error in hnsw_unmark_deleted");
         return HNSW_ERR_GENERIC;

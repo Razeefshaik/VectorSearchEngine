@@ -36,7 +36,7 @@ int main() {
         });
     }
     for (size_t r = 0; r < READERS; ++r) {
-        threads.emplace_back([&] {
+        threads.emplace_back([&, r] {           // r captured BY VALUE -- fixes a loop-variable race
             std::mt19937 local(r + 1);
             std::normal_distribution<float> d(0.f, 1.f);
             std::vector<float> q(DIM);

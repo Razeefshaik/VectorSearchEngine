@@ -21,6 +21,7 @@ typedef struct HnswIndex HnswIndex;
 #define HNSW_ERR_NULL      -2
 #define HNSW_ERR_FULL      -3
 #define HNSW_ERR_NOT_FOUND -4
+#define HNSW_ERR_DUPLICATE -5
 
 #define HNSW_SPACE_COSINE 0
 #define HNSW_SPACE_L2     1

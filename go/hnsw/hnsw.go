@@ -9,8 +9,8 @@ package hnsw
 
 /*
 #cgo CXXFLAGS: -std=c++17 -O3 -march=native
-#cgo CFLAGS: -I${SRCDIR}/../include
-#cgo LDFLAGS: -L${SRCDIR}/../build -lhnsw -lstdc++ -lm
+#cgo CFLAGS: -I${SRCDIR}/../../include
+#cgo LDFLAGS: -L${SRCDIR}/../../build -Wl,-rpath,${SRCDIR}/../../build -lhnsw -lstdc++ -lm
 #include <stdlib.h>
 #include "hnsw_c.h"
 */
@@ -28,6 +28,17 @@ type Space int
 const (
 	Cosine Space = C.HNSW_SPACE_COSINE
 	L2     Space = C.HNSW_SPACE_L2
+)
+
+// Sentinel errors. Check these with errors.Is rather than matching on error
+// text -- text comes from the underlying C++ exception message and can
+// legitimately vary. These three cases are given real error codes on the C
+// side specifically so callers (notably WAL replay, which needs to tell
+// "already applied" apart from a real failure) don't have to parse strings.
+var (
+	ErrDuplicateLabel = errors.New("hnsw: label already exists")
+	ErrNotFound       = errors.New("hnsw: label not found")
+	ErrFull           = errors.New("hnsw: index is full")
 )
 
 // Index is a handle to the C++ index. It is safe for concurrent use.
@@ -78,11 +89,17 @@ func (i *Index) Add(vec []float32, label uint64) error {
 	// &vec[0] is a Go pointer to Go memory containing no Go pointers, so it is
 	// legal to pass to C for the duration of the call (cgo pointer rule 1).
 	rc := C.hnsw_add(i.ptr, (*C.float)(unsafe.Pointer(&vec[0])), C.uint64_t(label))
-	if rc != C.HNSW_OK {
+	runtime.KeepAlive(vec)
+	switch rc {
+	case C.HNSW_OK:
+		return nil
+	case C.HNSW_ERR_DUPLICATE:
+		return ErrDuplicateLabel
+	case C.HNSW_ERR_FULL:
+		return ErrFull
+	default:
 		return lastError()
 	}
-	runtime.KeepAlive(vec)
-	return nil
 }
 
 // Search returns up to k nearest neighbours. ef controls the recall/latency
@@ -115,10 +132,28 @@ func (i *Index) Search(query []float32, k, ef int) ([]Result, error) {
 }
 
 func (i *Index) MarkDeleted(label uint64) error {
-	if rc := C.hnsw_mark_deleted(i.ptr, C.uint64_t(label)); rc != C.HNSW_OK {
+	switch rc := C.hnsw_mark_deleted(i.ptr, C.uint64_t(label)); rc {
+	case C.HNSW_OK:
+		return nil
+	case C.HNSW_ERR_NOT_FOUND:
+		return ErrNotFound
+	default:
 		return lastError()
 	}
-	return nil
+}
+
+// UnmarkDeleted reverses a prior MarkDeleted, making the vector eligible for
+// search results again. Returns ErrNotFound if the label doesn't exist or
+// isn't currently deleted.
+func (i *Index) UnmarkDeleted(label uint64) error {
+	switch rc := C.hnsw_unmark_deleted(i.ptr, C.uint64_t(label)); rc {
+	case C.HNSW_OK:
+		return nil
+	case C.HNSW_ERR_NOT_FOUND:
+		return ErrNotFound
+	default:
+		return lastError()
+	}
 }
 
 func (i *Index) Save(path string) error {
