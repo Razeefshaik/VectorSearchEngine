@@ -49,13 +49,13 @@ cmake_ninja_workdir = S$:/StudyResource/TechBoooo/Backend/B$ projs/VectorSearchE
 
 build cmake_object_order_depends_target_hnsw: phony || .
 
-build CMakeFiles/hnsw.dir/hnsw_c.cpp.obj: CXX_COMPILER__hnsw_unscanned_Release S$:/StudyResource/TechBoooo/Backend/B$ projs/VectorSearchEngine/hnsw_c.cpp || cmake_object_order_depends_target_hnsw
+build CMakeFiles/hnsw.dir/src/hnsw_c.cpp.obj: CXX_COMPILER__hnsw_unscanned_Release S$:/StudyResource/TechBoooo/Backend/B$ projs/VectorSearchEngine/src/hnsw_c.cpp || cmake_object_order_depends_target_hnsw
   DEFINES = -Dhnsw_EXPORTS
-  DEP_FILE = CMakeFiles\hnsw.dir\hnsw_c.cpp.obj.d
+  DEP_FILE = CMakeFiles\hnsw.dir\src\hnsw_c.cpp.obj.d
   FLAGS = -O3 -DNDEBUG -std=gnu++17 -O3 -march=native -Wall -Wextra
-  INCLUDES = -I"S:/StudyResource/TechBoooo/Backend/B projs/VectorSearchEngine/."
+  INCLUDES = -I"S:/StudyResource/TechBoooo/Backend/B projs/VectorSearchEngine/include"
   OBJECT_DIR = CMakeFiles\hnsw.dir
-  OBJECT_FILE_DIR = CMakeFiles\hnsw.dir
+  OBJECT_FILE_DIR = CMakeFiles\hnsw.dir\src
 
 
 # =============================================================================
@@ -65,7 +65,7 @@ build CMakeFiles/hnsw.dir/hnsw_c.cpp.obj: CXX_COMPILER__hnsw_unscanned_Release S
 #############################################
 # Link the shared library libhnsw.dll
 
-build libhnsw.dll libhnsw.dll.a: CXX_SHARED_LIBRARY_LINKER__hnsw_Release CMakeFiles/hnsw.dir/hnsw_c.cpp.obj
+build libhnsw.dll libhnsw.dll.a: CXX_SHARED_LIBRARY_LINKER__hnsw_Release CMakeFiles/hnsw.dir/src/hnsw_c.cpp.obj
   LANGUAGE_COMPILE_FLAGS = -O3 -DNDEBUG
   LINK_LIBRARIES = -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32
   OBJECT_DIR = CMakeFiles\hnsw.dir
@@ -85,12 +85,12 @@ build libhnsw.dll libhnsw.dll.a: CXX_SHARED_LIBRARY_LINKER__hnsw_Release CMakeFi
 
 build cmake_object_order_depends_target_hnsw_benchmark: phony || .
 
-build CMakeFiles/hnsw_benchmark.dir/benchmark.cpp.obj: CXX_COMPILER__hnsw_benchmark_unscanned_Release S$:/StudyResource/TechBoooo/Backend/B$ projs/VectorSearchEngine/benchmark.cpp || cmake_object_order_depends_target_hnsw_benchmark
-  DEP_FILE = CMakeFiles\hnsw_benchmark.dir\benchmark.cpp.obj.d
+build CMakeFiles/hnsw_benchmark.dir/src/benchmark.cpp.obj: CXX_COMPILER__hnsw_benchmark_unscanned_Release S$:/StudyResource/TechBoooo/Backend/B$ projs/VectorSearchEngine/src/benchmark.cpp || cmake_object_order_depends_target_hnsw_benchmark
+  DEP_FILE = CMakeFiles\hnsw_benchmark.dir\src\benchmark.cpp.obj.d
   FLAGS = -O3 -DNDEBUG -std=gnu++17 -O3 -march=native -Wall -Wextra
-  INCLUDES = -I"S:/StudyResource/TechBoooo/Backend/B projs/VectorSearchEngine/."
+  INCLUDES = -I"S:/StudyResource/TechBoooo/Backend/B projs/VectorSearchEngine/include"
   OBJECT_DIR = CMakeFiles\hnsw_benchmark.dir
-  OBJECT_FILE_DIR = CMakeFiles\hnsw_benchmark.dir
+  OBJECT_FILE_DIR = CMakeFiles\hnsw_benchmark.dir\src
 
 
 # =============================================================================
@@ -100,7 +100,7 @@ build CMakeFiles/hnsw_benchmark.dir/benchmark.cpp.obj: CXX_COMPILER__hnsw_benchm
 #############################################
 # Link the executable hnsw_benchmark.exe
 
-build hnsw_benchmark.exe: CXX_EXECUTABLE_LINKER__hnsw_benchmark_Release CMakeFiles/hnsw_benchmark.dir/benchmark.cpp.obj
+build hnsw_benchmark.exe: CXX_EXECUTABLE_LINKER__hnsw_benchmark_Release CMakeFiles/hnsw_benchmark.dir/src/benchmark.cpp.obj
   FLAGS = -O3 -DNDEBUG
   LINK_LIBRARIES = -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32
   OBJECT_DIR = CMakeFiles\hnsw_benchmark.dir
@@ -119,12 +119,12 @@ build hnsw_benchmark.exe: CXX_EXECUTABLE_LINKER__hnsw_benchmark_Release CMakeFil
 
 build cmake_object_order_depends_target_hnsw_stress: phony || .
 
-build CMakeFiles/hnsw_stress.dir/stress.cpp.obj: CXX_COMPILER__hnsw_stress_unscanned_Release S$:/StudyResource/TechBoooo/Backend/B$ projs/VectorSearchEngine/stress.cpp || cmake_object_order_depends_target_hnsw_stress
-  DEP_FILE = CMakeFiles\hnsw_stress.dir\stress.cpp.obj.d
+build CMakeFiles/hnsw_stress.dir/src/stress.cpp.obj: CXX_COMPILER__hnsw_stress_unscanned_Release S$:/StudyResource/TechBoooo/Backend/B$ projs/VectorSearchEngine/src/stress.cpp || cmake_object_order_depends_target_hnsw_stress
+  DEP_FILE = CMakeFiles\hnsw_stress.dir\src\stress.cpp.obj.d
   FLAGS = -O3 -DNDEBUG -std=gnu++17 -O3 -march=native -Wall -Wextra
-  INCLUDES = -I"S:/StudyResource/TechBoooo/Backend/B projs/VectorSearchEngine/."
+  INCLUDES = -I"S:/StudyResource/TechBoooo/Backend/B projs/VectorSearchEngine/include"
   OBJECT_DIR = CMakeFiles\hnsw_stress.dir
-  OBJECT_FILE_DIR = CMakeFiles\hnsw_stress.dir
+  OBJECT_FILE_DIR = CMakeFiles\hnsw_stress.dir\src
 
 
 # =============================================================================
@@ -134,7 +134,7 @@ build CMakeFiles/hnsw_stress.dir/stress.cpp.obj: CXX_COMPILER__hnsw_stress_unsca
 #############################################
 # Link the executable hnsw_stress.exe
 
-build hnsw_stress.exe: CXX_EXECUTABLE_LINKER__hnsw_stress_Release CMakeFiles/hnsw_stress.dir/stress.cpp.obj
+build hnsw_stress.exe: CXX_EXECUTABLE_LINKER__hnsw_stress_Release CMakeFiles/hnsw_stress.dir/src/stress.cpp.obj
   FLAGS = -O3 -DNDEBUG
   LINK_LIBRARIES = -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32
   OBJECT_DIR = CMakeFiles\hnsw_stress.dir
@@ -143,6 +143,40 @@ build hnsw_stress.exe: CXX_EXECUTABLE_LINKER__hnsw_stress_Release CMakeFiles/hns
   TARGET_FILE = hnsw_stress.exe
   TARGET_IMPLIB = libhnsw_stress.dll.a
   TARGET_PDB = hnsw_stress.exe.dbg
+
+# =============================================================================
+# Object build statements for EXECUTABLE target hnsw_sift_bench
+
+
+#############################################
+# Order-only phony target for hnsw_sift_bench
+
+build cmake_object_order_depends_target_hnsw_sift_bench: phony || .
+
+build CMakeFiles/hnsw_sift_bench.dir/src/sift_bench.cpp.obj: CXX_COMPILER__hnsw_sift_bench_unscanned_Release S$:/StudyResource/TechBoooo/Backend/B$ projs/VectorSearchEngine/src/sift_bench.cpp || cmake_object_order_depends_target_hnsw_sift_bench
+  DEP_FILE = CMakeFiles\hnsw_sift_bench.dir\src\sift_bench.cpp.obj.d
+  FLAGS = -O3 -DNDEBUG -std=gnu++17 -O3 -march=native -Wall -Wextra
+  INCLUDES = -I"S:/StudyResource/TechBoooo/Backend/B projs/VectorSearchEngine/include"
+  OBJECT_DIR = CMakeFiles\hnsw_sift_bench.dir
+  OBJECT_FILE_DIR = CMakeFiles\hnsw_sift_bench.dir\src
+
+
+# =============================================================================
+# Link build statements for EXECUTABLE target hnsw_sift_bench
+
+
+#############################################
+# Link the executable hnsw_sift_bench.exe
+
+build hnsw_sift_bench.exe: CXX_EXECUTABLE_LINKER__hnsw_sift_bench_Release CMakeFiles/hnsw_sift_bench.dir/src/sift_bench.cpp.obj
+  FLAGS = -O3 -DNDEBUG
+  LINK_LIBRARIES = -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32
+  OBJECT_DIR = CMakeFiles\hnsw_sift_bench.dir
+  POST_BUILD = cd .
+  PRE_LINK = cd .
+  TARGET_FILE = hnsw_sift_bench.exe
+  TARGET_IMPLIB = libhnsw_sift_bench.dll.a
+  TARGET_PDB = hnsw_sift_bench.exe.dbg
 
 
 #############################################
@@ -174,6 +208,8 @@ build hnsw: phony libhnsw.dll
 
 build hnsw_benchmark: phony hnsw_benchmark.exe
 
+build hnsw_sift_bench: phony hnsw_sift_bench.exe
+
 build hnsw_stress: phony hnsw_stress.exe
 
 # =============================================================================
@@ -184,7 +220,7 @@ build hnsw_stress: phony hnsw_stress.exe
 #############################################
 # Folder: S:/StudyResource/TechBoooo/Backend/B projs/VectorSearchEngine/build
 
-build all: phony libhnsw.dll hnsw_benchmark.exe hnsw_stress.exe
+build all: phony libhnsw.dll hnsw_benchmark.exe hnsw_stress.exe hnsw_sift_bench.exe
 
 # =============================================================================
 # Built-in targets

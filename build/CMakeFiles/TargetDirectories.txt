@@ -1,5 +1,6 @@
 S:/StudyResource/TechBoooo/Backend/B projs/VectorSearchEngine/build/CMakeFiles/hnsw.dir
 S:/StudyResource/TechBoooo/Backend/B projs/VectorSearchEngine/build/CMakeFiles/hnsw_benchmark.dir
 S:/StudyResource/TechBoooo/Backend/B projs/VectorSearchEngine/build/CMakeFiles/hnsw_stress.dir
+S:/StudyResource/TechBoooo/Backend/B projs/VectorSearchEngine/build/CMakeFiles/hnsw_sift_bench.dir
 S:/StudyResource/TechBoooo/Backend/B projs/VectorSearchEngine/build/CMakeFiles/edit_cache.dir
 S:/StudyResource/TechBoooo/Backend/B projs/VectorSearchEngine/build/CMakeFiles/rebuild_cache.dir

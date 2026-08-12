@@ -7,20 +7,74 @@ distributed vector search engine.
 Read **[DOCUMENTATION.md](DOCUMENTATION.md)** for a full walkthrough of the
 algorithm and every design decision.
 
-## Build
+## Build & run — full flow
 
-```bash
+Everything below runs from the repo root, in order. Steps 1–2 are required;
+3–5 are the three test/benchmark executables (run any or all); 6 is optional
+and needs a real SIFT1M download.
+
+### 1. Put the MinGW toolchain on PATH
+
+```powershell
 $env:PATH = "S:\CLion 2024.3.1.1\bin\mingw\bin;" + $env:PATH   # runtime DLLs (libstdc++-6.dll etc.) must be on PATH
+```
 
+### 2. Configure + build with CMake/Ninja
+
+```powershell
 & "S:\CLion 2024.3.1.1\bin\cmake\win\x64\bin\cmake.exe" -B build -G Ninja `
   -DCMAKE_MAKE_PROGRAM="S:/CLion 2024.3.1.1/bin/ninja/win/x64/ninja.exe" `
   -DCMAKE_CXX_COMPILER="S:/CLion 2024.3.1.1/bin/mingw/bin/g++.exe"
 
 & "S:\CLion 2024.3.1.1\bin\cmake\win\x64\bin\cmake.exe" --build build -j
+```
 
-.\build\hnsw_benchmark.exe 20000 128   # recall + latency sweep
-.\build\hnsw_stress.exe                # concurrent insert/query
+This produces `libhnsw.dll` (the cgo-facing shared lib) plus three
+executables: `hnsw_benchmark.exe`, `hnsw_stress.exe`, `hnsw_sift_bench.exe`.
 
+### 3. General recall/latency benchmark + correctness checks
+
+```powershell
+.\build\hnsw_benchmark.exe 20000 128   # args: N vectors, dim (defaults 20000 128)
+```
+
+Sweeps `efSearch`, prints a recall@10 vs. latency/QPS table, then runs a
+soft-delete check and a save/load roundtrip check.
+
+### 4. Concurrency stress test
+
+```powershell
+.\build\hnsw_stress.exe                # concurrent insert/query, no args
+```
+
+Runs multiple writer/reader threads against the same index and checks for
+corruption.
+
+### 5. SIFT1M-format benchmark, using synthetic data (no download needed)
+
+`hnsw_sift_bench.exe` reads the real texmex `.fvecs`/`.ivecs` format. To
+exercise it without the 168 MB SIFT1M download, first generate a small
+synthetic dataset in that format:
+
+```powershell
+g++ -std=c++17 -O2 make_test_fvecs.cpp -o make_test_fvecs.exe
+.\make_test_fvecs.exe                  # writes test_base.fvecs, test_query.fvecs, test_gt.ivecs
+.\build\hnsw_sift_bench.exe test_base.fvecs test_query.fvecs test_gt.ivecs
+```
+
+`hnsw_sift_bench` args: `<base.fvecs> <query.fvecs> <groundtruth.ivecs> [N] [M] [efConstruction]`
+(`N`=0 means "use all vectors in the file").
+
+### 6. (Optional) Real SIFT1M benchmark
+
+Needs `wget`/`curl` and outbound FTP access:
+
+```bash
+./download_sift1m.sh                   # fetches into data/sift/
+```
+
+```powershell
+.\build\hnsw_sift_bench.exe data\sift\sift_base.fvecs data\sift\sift_query.fvecs data\sift\sift_groundtruth.ivecs
 ```
 
 Without cmake:
