@@ -1,19 +1,13 @@
-// Package hnsw wraps the C++ HNSW index over cgo.
-//
-// Build the shared library first:
-//
-//	cmake -B build && cmake --build build
-//
-// Then set the flags below to point at it (or install the library system-wide).
+
+
+
+
+
+
+
 package hnsw
 
-/*
-#cgo CXXFLAGS: -std=c++17 -O3 -march=native
-#cgo CFLAGS: -I${SRCDIR}/../../include
-#cgo LDFLAGS: -L${SRCDIR}/../../build -Wl,-rpath,${SRCDIR}/../../build -lhnsw -lstdc++ -lm
-#include <stdlib.h>
-#include "hnsw_c.h"
-*/
+
 import "C"
 
 import (
@@ -30,18 +24,18 @@ const (
 	L2     Space = C.HNSW_SPACE_L2
 )
 
-// Sentinel errors. Check these with errors.Is rather than matching on error
-// text -- text comes from the underlying C++ exception message and can
-// legitimately vary. These three cases are given real error codes on the C
-// side specifically so callers (notably WAL replay, which needs to tell
-// "already applied" apart from a real failure) don't have to parse strings.
+
+
+
+
+
 var (
 	ErrDuplicateLabel = errors.New("hnsw: label already exists")
 	ErrNotFound       = errors.New("hnsw: label not found")
 	ErrFull           = errors.New("hnsw: index is full")
 )
 
-// Index is a handle to the C++ index. It is safe for concurrent use.
+
 type Index struct {
 	ptr *C.HnswIndex
 	dim int
@@ -60,8 +54,8 @@ func lastError() error {
 	return fmt.Errorf("hnsw: %s", msg)
 }
 
-// New allocates an index. Capacity is fixed at construction: the C++ side
-// preallocates so that inserts never reallocate under concurrent readers.
+
+
 func New(space Space, dim, maxElements, m, efConstruction int, seed uint64) (*Index, error) {
 	ptr := C.hnsw_new(C.int(space), C.size_t(dim), C.size_t(maxElements),
 		C.size_t(m), C.size_t(efConstruction), C.uint64_t(seed))
@@ -81,13 +75,13 @@ func (i *Index) Close() {
 	}
 }
 
-// Add inserts one vector. vec must have length Dim().
+
 func (i *Index) Add(vec []float32, label uint64) error {
 	if len(vec) != i.dim {
 		return fmt.Errorf("hnsw: expected %d dims, got %d", i.dim, len(vec))
 	}
-	// &vec[0] is a Go pointer to Go memory containing no Go pointers, so it is
-	// legal to pass to C for the duration of the call (cgo pointer rule 1).
+	
+	
 	rc := C.hnsw_add(i.ptr, (*C.float)(unsafe.Pointer(&vec[0])), C.uint64_t(label))
 	runtime.KeepAlive(vec)
 	switch rc {
@@ -102,8 +96,8 @@ func (i *Index) Add(vec []float32, label uint64) error {
 	}
 }
 
-// Search returns up to k nearest neighbours. ef controls the recall/latency
-// tradeoff; it must be >= k. Higher ef means better recall and slower queries.
+
+
 func (i *Index) Search(query []float32, k, ef int) ([]Result, error) {
 	if len(query) != i.dim {
 		return nil, fmt.Errorf("hnsw: expected %d dims, got %d", i.dim, len(query))
@@ -142,9 +136,9 @@ func (i *Index) MarkDeleted(label uint64) error {
 	}
 }
 
-// UnmarkDeleted reverses a prior MarkDeleted, making the vector eligible for
-// search results again. Returns ErrNotFound if the label doesn't exist or
-// isn't currently deleted.
+
+
+
 func (i *Index) UnmarkDeleted(label uint64) error {
 	switch rc := C.hnsw_unmark_deleted(i.ptr, C.uint64_t(label)); rc {
 	case C.HNSW_OK:

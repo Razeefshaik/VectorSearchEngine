@@ -1,11 +1,11 @@
-// These tests need the built C++ shared library. Build it first:
-//
-//	cmake -B build && cmake --build build -j
-//
-// then from go/: go test ./...
-//
-// (hnsw.go's cgo directives point at ../../build relative to go/hnsw/, and
-// bake in an rpath, so no LD_LIBRARY_PATH juggling should be needed.)
+
+
+
+
+
+
+
+
 package durable
 
 import (
@@ -36,8 +36,8 @@ func testVec(seed float32) []float32 {
 	return v
 }
 
-// TestCrashRecovery is the core claim of this whole package: every Add that
-// returned nil must survive a crash with no clean shutdown at all.
+
+
 func TestCrashRecovery(t *testing.T) {
 	dir := t.TempDir()
 	cfg := testConfig(dir)
@@ -57,9 +57,9 @@ func TestCrashRecovery(t *testing.T) {
 		t.Fatalf("Len() = %d, want %d", idx.Len(), n)
 	}
 
-	// Simulate a crash: no Snapshot, no Close, just drop the handle. Every
-	// Add above already fsynced its own WAL record before returning -- if
-	// recovery loses any of them, the WAL isn't doing its job.
+	
+	
+	
 	idx = nil
 
 	recovered, err := Open(cfg)
@@ -81,9 +81,9 @@ func TestCrashRecovery(t *testing.T) {
 	}
 }
 
-// TestSnapshotThenCrashRecovers checks the trickier path: a snapshot capturing
-// [0,20), a crash after more writes land only in the (freshly rotated) WAL,
-// and recovery correctly stitching both together.
+
+
+
 func TestSnapshotThenCrashRecovers(t *testing.T) {
 	dir := t.TempDir()
 	cfg := testConfig(dir)
@@ -100,12 +100,12 @@ func TestSnapshotThenCrashRecovers(t *testing.T) {
 	if err := idx.Snapshot(); err != nil {
 		t.Fatalf("Snapshot: %v", err)
 	}
-	for i := 20; i < 30; i++ { // written after the snapshot -- WAL-only until recovery
+	for i := 20; i < 30; i++ { 
 		if err := idx.Add(testVec(float32(i)), uint64(i)); err != nil {
 			t.Fatalf("Add(%d): %v", i, err)
 		}
 	}
-	idx = nil // crash: snapshot covers [0,20), WAL covers [20,30)
+	idx = nil 
 
 	recovered, err := Open(cfg)
 	if err != nil {
@@ -150,9 +150,9 @@ func TestDeleteSurvivesRecovery(t *testing.T) {
 	}
 }
 
-// TestReopenTwiceIsIdempotent recovers, snapshots again, and recovers once
-// more -- guarding against the "snapshot then crash before WAL rotation
-// finishes" window described in Snapshot's doc comment.
+
+
+
 func TestReopenTwiceIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	cfg := testConfig(dir)
