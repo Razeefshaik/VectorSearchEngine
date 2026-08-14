@@ -1,8 +1,3 @@
-// Package durable combines the cgo-wrapped HNSW index with a write-ahead log
-// so that writes survive a process crash. This is the piece that sits
-// between the gRPC shard server and the raw hnsw.Index: everything the shard
-// server calls should go through here, not through hnsw.Index directly,
-// or writes silently lose their durability guarantee.
 package durable
 
 import (
@@ -14,8 +9,6 @@ import (
 	"hnswdb/wal"
 )
 
-// Config describes how to open or create a durable index. SnapshotPath and
-// WALPath live next to each other on disk; both are required.
 type Config struct {
 	SnapshotPath   string
 	WALPath        string
@@ -33,15 +26,6 @@ type Index struct {
 	cfg Config
 }
 
-// Open recovers state from cfg.SnapshotPath (if it exists) plus
-// cfg.WALPath (if it exists), replays any WAL records not yet captured by
-// the snapshot, then reopens the WAL for new appends -- dropping any torn
-// tail record left by a crash mid-write. If neither file exists, this
-// creates a fresh empty index and a fresh empty WAL.
-//
-// Call this once at process startup. Do not call Replay yourself elsewhere;
-// mixing manual replay with a live Index will re-apply records the running
-// index has already seen.
 func Open(cfg Config) (*Index, error) {
 	idx, err := loadOrCreateIndex(cfg)
 	if err != nil {
@@ -54,7 +38,7 @@ func Open(cfg Config) (*Index, error) {
 	if err != nil {
 		return nil, fmt.Errorf("durable: replaying WAL: %w", err)
 	}
-	_ = applied // number of records recovered; log this at the call site if useful
+	_ = applied
 
 	w, err := reopenWAL(cfg.WALPath, lastGood)
 	if err != nil {
@@ -84,7 +68,7 @@ func loadOrCreateIndex(cfg Config) (*hnsw.Index, error) {
 
 func reopenWAL(path string, lastGoodOffset int64) (*wal.WAL, error) {
 	if _, err := os.Stat(path); err == nil {
-		w, err := wal.OpenForAppend(path, lastGoodOffset) // truncates any torn tail
+		w, err := wal.OpenForAppend(path, lastGoodOffset)
 		if err != nil {
 			return nil, fmt.Errorf("durable: reopening WAL %s: %w", path, err)
 		}
@@ -100,24 +84,18 @@ func reopenWAL(path string, lastGoodOffset int64) (*wal.WAL, error) {
 	return w, nil
 }
 
-// apply applies one WAL record to idx during replay, treating "this was
-// already applied" errors as success rather than failure. That's what makes
-// replay idempotent: a record can safely be re-applied if a crash happened
-// between fsyncing it and a snapshot that made it redundant -- see
-// (*Index).Snapshot for exactly when that window exists.
 func apply(idx *hnsw.Index, r wal.Record) error {
 	switch r.Op {
 	case wal.OpAdd:
 		err := idx.Add(r.Vector, r.Label)
 		if errors.Is(err, hnsw.ErrDuplicateLabel) {
-			return nil // already present -- captured by a snapshot after this record
+			return nil
 		}
 		return err
 	case wal.OpMarkDeleted:
 		err := idx.MarkDeleted(r.Label)
 		if errors.Is(err, hnsw.ErrNotFound) {
-			return nil // already deleted, or the add that would precede it
-			// was itself already captured -- either way, nothing to do
+			return nil
 		}
 		return err
 	case wal.OpUnmarkDeleted:
@@ -131,18 +109,11 @@ func apply(idx *hnsw.Index, r wal.Record) error {
 	}
 }
 
-// Add durably inserts a vector. The WAL record is written and fsynced BEFORE
-// the vector is applied to the in-memory index, and only then does this
-// return. A crash at any point after Add returns nil will recover this
-// vector on the next Open.
 func (d *Index) Add(vec []float32, label uint64) error {
 	if err := d.w.Append(wal.Record{Op: wal.OpAdd, Label: label, Vector: vec}); err != nil {
 		return fmt.Errorf("durable: wal append: %w", err)
 	}
 	if err := d.idx.Add(vec, label); err != nil {
-		// Logged durably but the in-memory apply failed -- e.g. a duplicate
-		// label from a bad caller. The record sits harmlessly in the WAL; a
-		// future replay's idempotency handling will just no-op it.
 		return fmt.Errorf("durable: index add (already logged to WAL): %w", err)
 	}
 	return nil
@@ -162,22 +133,10 @@ func (d *Index) UnmarkDeleted(label uint64) error {
 	return d.idx.UnmarkDeleted(label)
 }
 
-// Search does not touch the WAL -- reads have nothing to make durable.
 func (d *Index) Search(query []float32, k, ef int) ([]hnsw.Result, error) {
 	return d.idx.Search(query, k, ef)
 }
 
-// Snapshot durably captures the current index state and compacts the WAL:
-// once this returns, every record the WAL held has been folded into the
-// snapshot file, so the WAL is rotated to empty.
-//
-// Order matters. We (1) save the snapshot to a temp file, (2) atomically
-// rename it into place, (3) create a new empty WAL, (4) close the old WAL,
-// (5) atomically rename the new WAL into place. If the process crashes
-// between steps 2 and 5, the OLD WAL (with records already reflected in the
-// new snapshot) is still what gets replayed on restart -- and that's fine:
-// apply()'s idempotency handling means re-applying already-captured records
-// is a harmless no-op, not a correctness bug.
 func (d *Index) Snapshot() error {
 	tmpSnapshot := d.cfg.SnapshotPath + ".tmp"
 	if err := d.idx.Save(tmpSnapshot); err != nil {

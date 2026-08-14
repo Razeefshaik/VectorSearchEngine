@@ -55,10 +55,10 @@ func TestCreateAppendReplay(t *testing.T) {
 	}
 }
 
-// TestReplayTornTail is the important one: it simulates exactly the failure
-// mode a real crash produces -- a partially written last record -- and
-// checks that Replay recovers everything before it and cleanly discards the
-// rest, rather than erroring out or (worse) misinterpreting garbage.
+
+
+
+
 func TestReplayTornTail(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "test.wal")
 
@@ -76,9 +76,9 @@ func TestReplayTornTail(t *testing.T) {
 		}
 	}
 
-	// Simulate a crash mid-write of a third record: encode it but write only
-	// part of it, bypassing Append (which only ever produces complete,
-	// fsynced records).
+	
+	
+	
 	tornBuf, err := encode(Record{Op: OpAdd, Label: 3, Vector: []float32{7, 8, 9}})
 	if err != nil {
 		t.Fatalf("encode: %v", err)
@@ -110,8 +110,8 @@ func TestReplayTornTail(t *testing.T) {
 		}
 	}
 
-	// The real recovery path: truncate the torn tail via OpenForAppend, then
-	// confirm new writes land cleanly right after the last GOOD record.
+	
+	
 	w2, err := OpenForAppend(path, lastGood)
 	if err != nil {
 		t.Fatalf("OpenForAppend after torn tail: %v", err)

@@ -1,29 +1,29 @@
-// Package wal implements a simple, crash-safe write-ahead log for the vector
-// index. Every mutation (add / mark-deleted / unmark-deleted) is appended and
-// fsynced here BEFORE it is applied to the in-memory HNSW index. On restart,
-// replaying this log on top of the last snapshot reconstructs exactly the
-// state the index had at the moment of the crash.
-//
-// Format (all integers little-endian):
-//
-//	file   := header record*
-//	header := magic(4) version(4)
-//	record := length(4) payload(length) crc32(4)
-//	payload:= op(1) label(8) dim(4) vector(dim*4)
-//
-// `length` covers `payload` only, not itself or the trailing crc32.
-//
-// A record is valid only if length+payload+crc32 are ALL present on disk and
-// the checksum matches. Any failure to read a complete, checksummed record --
-// a short read, or a checksum mismatch -- is treated as a torn write from a
-// crash mid-append, not as corruption: replay stops there and reports how
-// many complete records it recovered plus the byte offset immediately after
-// the last good one. This is the standard WAL assumption used by LevelDB,
-// RocksDB, and similar systems: a WAL has exactly one writer appending to the
-// tail, so the only way to end up with a partial record is a crash while
-// writing the very last one. Corruption anywhere earlier in the file would
-// indicate a different, more serious problem (disk bit rot, a bug elsewhere)
-// that this package deliberately does not try to paper over.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 package wal
 
 import (
@@ -47,35 +47,35 @@ const (
 )
 
 const (
-	magic   uint32 = 0x57414C31 // "WAL1"
+	magic   uint32 = 0x57414C31 
 	version uint32 = 1
 
 	headerSize = 8
-	// Sanity bound on a record's payload length. Guards against a corrupt or
-	// torn length field sending the reader off trying to allocate gigabytes
-	// before the short-read check ever gets a chance to fire. Generous enough
-	// for any real embedding dimension (a 1-million-dim vector would still fit).
-	maxPayloadLen = 1 << 24 // 16 MiB
+	
+	
+	
+	
+	maxPayloadLen = 1 << 24 
 )
 
-// Record is one logged mutation. Vector is set (and required, non-empty) for
-// OpAdd; it is nil for the delete ops.
+
+
 type Record struct {
 	Op     OpType
 	Label  uint64
 	Vector []float32
 }
 
-// WAL is an append-only log file. Safe for concurrent Append/Sync calls.
+
 type WAL struct {
 	mu   sync.Mutex
 	f    *os.File
 	path string
 }
 
-// Create makes a brand-new, empty WAL file, failing if one already exists at
-// path. Use this only when there is no prior state to recover, i.e. a
-// freshly created index with no snapshot yet.
+
+
+
 func Create(path string) (*WAL, error) {
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
@@ -93,11 +93,11 @@ func Create(path string) (*WAL, error) {
 	return &WAL{f: f, path: path}, nil
 }
 
-// OpenForAppend opens an existing WAL file and positions it for new Append
-// calls. It does NOT replay anything -- call Replay first to recover prior
-// state, then pass the lastGoodOffset it returns here as truncateTo to
-// discard any torn tail record before new writes begin. Pass truncateTo < 0
-// to skip truncation (e.g. if you already know the file is clean).
+
+
+
+
+
 func OpenForAppend(path string, truncateTo int64) (*WAL, error) {
 	f, err := os.OpenFile(path, os.O_RDWR, 0o644)
 	if err != nil {
@@ -127,18 +127,18 @@ func writeHeader(f *os.File) error {
 	return nil
 }
 
-// Append writes one record and fsyncs before returning. The record is
-// durable the moment this call returns nil: a crash after that point will
-// recover it on the next Replay.
-//
-// fsync-per-append is the safe default -- every write this returns nil for
-// survives a crash, full stop. It costs one disk flush per call (sub-ms on
-// SSD, more on spinning disk or a network filesystem). If that becomes your
-// throughput ceiling, the standard fix is *group commit*: batch several
-// pending Appends behind one fsync rather than one each. That trades a little
-// latency (a write waits for its batch) for much higher throughput, without
-// weakening durability -- worth reaching for once you've actually measured
-// fsync as the bottleneck, not before.
+
+
+
+
+
+
+
+
+
+
+
+
 func (w *WAL) Append(r Record) error {
 	buf, err := encode(r)
 	if err != nil {
@@ -155,8 +155,8 @@ func (w *WAL) Append(r Record) error {
 	return nil
 }
 
-// Sync flushes any OS-buffered writes to stable storage. Append already does
-// this per call; Sync is exposed for callers that batch writes themselves.
+
+
 func (w *WAL) Sync() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -186,7 +186,7 @@ func encode(r Record) ([]byte, error) {
 	}
 
 	dim := len(r.Vector)
-	payloadLen := 1 + 8 + 4 + dim*4 // op + label + dim + vector
+	payloadLen := 1 + 8 + 4 + dim*4 
 	buf := make([]byte, 4+payloadLen+4)
 
 	binary.LittleEndian.PutUint32(buf[0:4], uint32(payloadLen))
@@ -230,25 +230,25 @@ func decode(p []byte) (Record, error) {
 	return Record{Op: op, Label: label, Vector: vec}, nil
 }
 
-// Replay reads path from the beginning, calling apply for each valid record
-// in order. recordsApplied is how many records were successfully applied.
-// lastGoodOffset is the byte offset immediately after the last valid record --
-// pass it to OpenForAppend's truncateTo to drop any torn tail before resuming
-// writes.
-//
-// Replay stops at the first sign of a torn record (short read or bad
-// checksum) rather than erroring out -- see the package doc for why that's
-// the correct behaviour for a WAL, not a bug being swallowed.
-//
-// apply is called synchronously, in order. If apply returns an error, Replay
-// stops immediately and returns it wrapped. apply is responsible for
-// deciding which of ITS OWN errors are fatal versus safe to ignore -- e.g. an
-// "already exists" error is expected and fine if this record's effect was
-// already captured by a snapshot taken after the WAL was written but before
-// the crash. See durable.apply for exactly that logic.
-//
-// A missing file at path is not an error: it means there is nothing to
-// replay yet, and Replay returns (0, 0, nil).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 func Replay(path string, apply func(Record) error) (recordsApplied int, lastGoodOffset int64, err error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -276,7 +276,7 @@ func Replay(path string, apply func(Record) error) (recordsApplied int, lastGood
 	for {
 		rec, n, ok := readRecord(br)
 		if !ok {
-			break // clean EOF or torn tail -- Replay treats them identically
+			break 
 		}
 		if err := apply(rec); err != nil {
 			return recordsApplied, offset, fmt.Errorf(
@@ -289,31 +289,31 @@ func Replay(path string, apply func(Record) error) (recordsApplied int, lastGood
 	return recordsApplied, offset, nil
 }
 
-// readRecord reads one record from r. ok is false both for a clean end of
-// file and for a torn/corrupt tail -- see the package doc for why Replay
-// treats those two cases the same way.
+
+
+
 func readRecord(r *bufio.Reader) (rec Record, bytesRead int, ok bool) {
 	var lenBuf [4]byte
 	if _, err := io.ReadFull(r, lenBuf[:]); err != nil {
-		return Record{}, 0, false // clean EOF at a record boundary
+		return Record{}, 0, false 
 	}
 	payloadLen := binary.LittleEndian.Uint32(lenBuf[:])
 	if payloadLen == 0 || payloadLen > maxPayloadLen {
-		return Record{}, 0, false // corrupt/torn length field
+		return Record{}, 0, false 
 	}
 
 	payload := make([]byte, payloadLen)
 	if _, err := io.ReadFull(r, payload); err != nil {
-		return Record{}, 0, false // torn write mid-payload
+		return Record{}, 0, false 
 	}
 
 	var crcBuf [4]byte
 	if _, err := io.ReadFull(r, crcBuf[:]); err != nil {
-		return Record{}, 0, false // torn write mid-checksum
+		return Record{}, 0, false 
 	}
 	want := binary.LittleEndian.Uint32(crcBuf[:])
 	if crc32.ChecksumIEEE(payload) != want {
-		return Record{}, 0, false // checksum mismatch: torn or corrupt, treat as torn
+		return Record{}, 0, false 
 	}
 
 	rec, err := decode(payload)
