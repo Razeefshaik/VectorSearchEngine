@@ -1,9 +1,9 @@
-// stress.cpp -- concurrent insert + query, to be run under -fsanitize=thread.
-//
-//   g++ -std=c++17 -O1 -g -fsanitize=thread -Iinclude src/stress.cpp -o stress -pthread
-//
-// This is the test that catches the data races cgo will otherwise expose in
-// production, where Go serves many requests per second against one index.
+
+
+
+
+
+
 
 #include "hnsw.hpp"
 #include <atomic>
@@ -36,7 +36,7 @@ int main() {
         });
     }
     for (size_t r = 0; r < READERS; ++r) {
-        threads.emplace_back([&, r] {           // r captured BY VALUE -- fixes a loop-variable race
+        threads.emplace_back([&, r] {           
             std::mt19937 local(r + 1);
             std::normal_distribution<float> d(0.f, 1.f);
             std::vector<float> q(DIM);

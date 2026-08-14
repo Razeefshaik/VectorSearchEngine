@@ -1,8 +1,8 @@
-// benchmark.cpp -- correctness + recall/latency harness for the HNSW index.
-//
-// This is the file that produces the numbers you put in your README.
-// It measures the two things that matter: recall@k against exact brute force,
-// and query latency percentiles, swept over efSearch.
+
+
+
+
+
 
 #include "hnsw.hpp"
 
@@ -17,9 +17,9 @@
 using namespace hnsw;
 using Clock = std::chrono::steady_clock;
 
-// ---------------------------------------------------------------------------
-// helpers
-// ---------------------------------------------------------------------------
+
+
+
 
 static std::vector<float> makeRandomVectors(size_t n, size_t dim, uint64_t seed) {
     std::mt19937 rng(seed);
@@ -29,7 +29,7 @@ static std::vector<float> makeRandomVectors(size_t n, size_t dim, uint64_t seed)
     return out;
 }
 
-// Exact nearest neighbours, used as ground truth.
+
 static std::vector<label_t> bruteForce(const std::vector<float>& base, size_t n, size_t dim,
                                        const float* query, size_t k, Space space) {
     std::vector<std::pair<float, label_t>> scored(n);
@@ -66,7 +66,7 @@ static double percentile(std::vector<double> v, double p) {
     return v[i];
 }
 
-// ---------------------------------------------------------------------------
+
 
 int main(int argc, char** argv) {
     const size_t N        = (argc > 1) ? std::stoul(argv[1]) : 20000;
@@ -85,7 +85,7 @@ int main(int argc, char** argv) {
     auto base    = makeRandomVectors(N, DIM, 42);
     auto queries = makeRandomVectors(NQUERY, DIM, 1337);
 
-    // ---- build -------------------------------------------------------------
+    
     Index index(SPACE, DIM, N, M, EF_CONS);
 
     auto t0 = Clock::now();
@@ -100,14 +100,14 @@ int main(int argc, char** argv) {
               << "memory: " << index.memoryBytes() / (1024.0 * 1024.0) << " MB  ("
               << index.memoryBytes() / static_cast<double>(N) << " bytes/vector)\n\n";
 
-    // ---- ground truth ------------------------------------------------------
+    
     std::cout << "computing exact ground truth for " << NQUERY << " queries...\n";
     std::vector<std::vector<label_t>> truth(NQUERY);
     for (size_t q = 0; q < NQUERY; ++q)
         truth[q] = bruteForce(base, N, DIM, queries.data() + q * DIM, K, SPACE);
     std::cout << "\n";
 
-    // ---- recall / latency sweep -------------------------------------------
+    
     std::cout << "efSearch |  recall@" << K << "  |  p50 (ms)  p95 (ms)  p99 (ms)  |   QPS\n"
               << "---------+------------+---------------------------------+---------\n";
 
@@ -143,7 +143,7 @@ int main(int argc, char** argv) {
               << ": 95% recall@10 target " << (hitTarget ? "reached" : "NOT reached")
               << "\n\n";
 
-    // ---- soft delete -------------------------------------------------------
+    
     auto before = index.search(queries.data(), K, 100);
     label_t victim = before.front().label;
     index.markDeleted(victim);
@@ -155,7 +155,7 @@ int main(int argc, char** argv) {
               << "  active=" << index.activeSize() << "/" << index.size() << "\n";
     index.unmarkDeleted(victim);
 
-    // ---- persistence roundtrip --------------------------------------------
+    
     const std::string path = (std::filesystem::temp_directory_path() / "hnsw_index.bin").string();
     index.save(path);
     auto reloaded = Index::load(path);

@@ -1,6 +1,6 @@
-// make_test_fvecs.cpp -- writes a tiny synthetic dataset in real texmex
-// fvecs/ivecs format, with exact brute-force ground truth, purely to verify
-// sift_bench.cpp's file reader before running it on the real 1M-vector file.
+
+
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -35,7 +35,7 @@ int main() {
     for (auto& v : base) v = dist(rng);
     for (auto& v : queries) v = dist(rng);
 
-    // exact brute-force L2 ground truth, top-K per query
+    
     std::vector<int32_t> gt(NQ * K);
     for (size_t q = 0; q < NQ; ++q) {
         std::vector<std::pair<float, int32_t>> scored(N);
