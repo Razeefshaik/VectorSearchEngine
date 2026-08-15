@@ -1,8 +1,8 @@
-// benchmark.cpp -- correctness + recall/latency harness for the HNSW index.
-//
-// This is the file that produces the numbers you put in your README.
-// It measures the two things that matter: recall@k against exact brute force,
-// and query latency percentiles, swept over efSearch.
+
+
+
+
+
 
 #include "hnsw.hpp"
 
@@ -17,9 +17,9 @@
 using namespace hnsw;
 using Clock = std::chrono::steady_clock;
 
-// ---------------------------------------------------------------------------
-// helpers
-// ---------------------------------------------------------------------------
+
+
+
 
 static std::vector<float> makeRandomVectors(size_t n, size_t dim, uint64_t seed) {
     std::mt19937 rng(seed);
@@ -29,10 +29,14 @@ static std::vector<float> makeRandomVectors(size_t n, size_t dim, uint64_t seed)
     return out;
 }
 
-// Exact nearest neighbours, used as ground truth.
-static std::vector<label_t> bruteForce(const std::vector<float>& base, size_t n, size_t dim,
+
+// All synthetic vectors in this benchmark belong to a single fixed client;
+// multi-tenancy isn't what's being measured here.
+static constexpr uint64_t kBenchClientId = 1;
+
+static std::vector<Label> bruteForce(const std::vector<float>& base, size_t n, size_t dim,
                                        const float* query, size_t k, Space space) {
-    std::vector<std::pair<float, label_t>> scored(n);
+    std::vector<std::pair<float, size_t>> scored(n);
 
     std::vector<float> qn(query, query + dim);
     if (space == Space::Cosine) {
@@ -51,11 +55,11 @@ static std::vector<label_t> bruteForce(const std::vector<float>& base, size_t n,
         } else {
             d = l2SquaredDistance(qn.data(), p, dim);
         }
-        scored[i] = {d, static_cast<label_t>(i)};
+        scored[i] = {d, i};
     }
     std::partial_sort(scored.begin(), scored.begin() + k, scored.end());
-    std::vector<label_t> out(k);
-    for (size_t i = 0; i < k; ++i) out[i] = scored[i].second;
+    std::vector<Label> out(k);
+    for (size_t i = 0; i < k; ++i) out[i] = Label{kBenchClientId, static_cast<uint64_t>(scored[i].second)};
     return out;
 }
 
@@ -66,7 +70,7 @@ static double percentile(std::vector<double> v, double p) {
     return v[i];
 }
 
-// ---------------------------------------------------------------------------
+
 
 int main(int argc, char** argv) {
     const size_t N        = (argc > 1) ? std::stoul(argv[1]) : 20000;
@@ -85,12 +89,12 @@ int main(int argc, char** argv) {
     auto base    = makeRandomVectors(N, DIM, 42);
     auto queries = makeRandomVectors(NQUERY, DIM, 1337);
 
-    // ---- build -------------------------------------------------------------
+    
     Index index(SPACE, DIM, N, M, EF_CONS);
 
     auto t0 = Clock::now();
     for (size_t i = 0; i < N; ++i)
-        index.addPoint(base.data() + i * DIM, static_cast<label_t>(i));
+        index.addPoint(base.data() + i * DIM, Label{kBenchClientId, static_cast<uint64_t>(i)});
     auto t1 = Clock::now();
 
     double buildSec = std::chrono::duration<double>(t1 - t0).count();
@@ -100,14 +104,14 @@ int main(int argc, char** argv) {
               << "memory: " << index.memoryBytes() / (1024.0 * 1024.0) << " MB  ("
               << index.memoryBytes() / static_cast<double>(N) << " bytes/vector)\n\n";
 
-    // ---- ground truth ------------------------------------------------------
+    
     std::cout << "computing exact ground truth for " << NQUERY << " queries...\n";
-    std::vector<std::vector<label_t>> truth(NQUERY);
+    std::vector<std::vector<Label>> truth(NQUERY);
     for (size_t q = 0; q < NQUERY; ++q)
         truth[q] = bruteForce(base, N, DIM, queries.data() + q * DIM, K, SPACE);
     std::cout << "\n";
 
-    // ---- recall / latency sweep -------------------------------------------
+    
     std::cout << "efSearch |  recall@" << K << "  |  p50 (ms)  p95 (ms)  p99 (ms)  |   QPS\n"
               << "---------+------------+---------------------------------+---------\n";
 
@@ -125,7 +129,7 @@ int main(int argc, char** argv) {
             latencies.push_back(std::chrono::duration<double, std::milli>(s1 - s0).count());
 
             for (const auto& r : res)
-                for (label_t t : truth[q])
+                for (const Label& t : truth[q])
                     if (r.label == t) { ++hits; break; }
         }
 
@@ -143,19 +147,19 @@ int main(int argc, char** argv) {
               << ": 95% recall@10 target " << (hitTarget ? "reached" : "NOT reached")
               << "\n\n";
 
-    // ---- soft delete -------------------------------------------------------
+    
     auto before = index.search(queries.data(), K, 100);
-    label_t victim = before.front().label;
+    Label victim = before.front().label;
     index.markDeleted(victim);
     auto after = index.search(queries.data(), K, 100);
     bool victimGone = true;
     for (const auto& r : after) if (r.label == victim) victimGone = false;
-    std::cout << "soft delete: label " << victim << " -> "
+    std::cout << "soft delete: label (" << victim.clientId << "," << victim.label << ") -> "
               << (victimGone ? "PASS (filtered from results)" : "FAIL (still returned)")
               << "  active=" << index.activeSize() << "/" << index.size() << "\n";
     index.unmarkDeleted(victim);
 
-    // ---- persistence roundtrip --------------------------------------------
+    
     const std::string path = (std::filesystem::temp_directory_path() / "hnsw_index.bin").string();
     index.save(path);
     auto reloaded = Index::load(path);

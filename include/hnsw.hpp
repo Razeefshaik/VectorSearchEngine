@@ -1,21 +1,5 @@
-// hnsw.hpp -- Hierarchical Navigable Small World index.
-//
-// Faithful implementation of Malkov & Yashunin (2016), "Efficient and robust
-// approximate nearest neighbor search using Hierarchical Navigable Small World
-// graphs" -- Algorithms 1 through 5.
-//
-// Design notes:
-//   * Flat, contiguous storage. Vectors live in one arena; adjacency lists live
-//     in fixed-stride arrays. No hash maps, no pointer chasing in the hot loop.
-//   * float32 throughout. float64 doubles memory for no recall benefit.
-//   * Cosine is implemented as inner product over L2-normalized vectors, so the
-//     hot loop is a bare dot product.
-//   * Capacity is preallocated, so inserts never reallocate and concurrent
-//     readers never see a dangling pointer.
-//   * Payloads (document text, metadata) are NOT stored here. The index maps
-//     vector -> uint64 label; the label -> document mapping belongs in your Go
-//     metadata store.
-//
+
+
 #pragma once
 
 #include <algorithm>
@@ -24,6 +8,7 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -41,16 +26,39 @@
 
 namespace hnsw {
 
-using idx_t = uint32_t;   // internal, dense, 0..capacity-1
+using idx_t = uint32_t;
 using dist_t = float;
-using label_t = uint64_t; // external, user-supplied
 
-// Smaller distance is always better, for both spaces.
+// A label is scoped to the client that chose it: two different clients can
+// legitimately pick the same numeric label for two unrelated vectors, so
+// identity is the (clientId, label) pair, not label alone. Uniqueness is
+// guaranteed by operator== (exact struct equality), not by LabelHash -- the
+// hash is free to collide internally, since std::unordered_map already
+// resolves same-bucket collisions via operator==.
+struct Label {
+    uint64_t clientId;
+    uint64_t label;
+
+    bool operator==(const Label& other) const {
+        return clientId == other.clientId && label == other.label;
+    }
+    bool operator!=(const Label& other) const { return !(*this == other); }
+};
+
+struct LabelHash {
+    size_t operator()(const Label& l) const {
+        size_t h1 = std::hash<uint64_t>{}(l.clientId);
+        size_t h2 = std::hash<uint64_t>{}(l.label);
+        return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
+    }
+};
+
+
 enum class Space : int { Cosine = 0, L2 = 1 };
 
-// ---------------------------------------------------------------------------
-// Distance kernels
-// ---------------------------------------------------------------------------
+
+
+
 
 inline float dotProduct(const float* a, const float* b, size_t n) {
 #if defined(__AVX__)
@@ -96,14 +104,14 @@ inline float l2SquaredDistance(const float* a, const float* b, size_t n) {
 #endif
 }
 
-// Cosine distance in [0, 2] assuming both inputs are unit-normalized.
+
 inline float cosineDistance(const float* a, const float* b, size_t n) {
     return 1.0f - dotProduct(a, b, n);
 }
 
-// ---------------------------------------------------------------------------
-// Visited set: version-stamped array. O(1) reset, no allocation per search.
-// ---------------------------------------------------------------------------
+
+
+
 
 class VisitedList {
 public:
@@ -111,13 +119,13 @@ public:
 
     void reset() {
         ++cur_;
-        if (cur_ == 0) {                       // wrapped around
+        if (cur_ == 0) {                       
             std::fill(marks_.begin(), marks_.end(), 0);
             cur_ = 1;
         }
     }
     inline bool testAndSet(size_t i) {
-        if (marks_[i] == cur_) return true;    // already visited
+        if (marks_[i] == cur_) return true;    
         marks_[i] = cur_;
         return false;
     }
@@ -153,21 +161,21 @@ private:
     size_t n_;
 };
 
-// ---------------------------------------------------------------------------
-// Index
-// ---------------------------------------------------------------------------
+
+
+
 
 class Index {
 public:
     using Cand = std::pair<dist_t, idx_t>;
 
     struct SearchResult {
-        label_t label;
-        dist_t  distance;
+        Label  label;
+        dist_t distance;
     };
 
-    // M              -- target out-degree on layers >= 1 (16..48 typical)
-    // efConstruction -- beam width during build (higher = better graph, slower)
+    
+    
     Index(Space space,
           size_t dim,
           size_t maxElements,
@@ -190,10 +198,10 @@ public:
 
         data_.assign(maxElements_ * dim_, 0.0f);
         levels_.assign(maxElements_, 0);
-        labels_.assign(maxElements_, 0);
+        labels_.assign(maxElements_, Label{0, 0});
         deleted_.assign(maxElements_, 0);
 
-        strideL0_ = maxM0_ + 1;              // slot 0 holds the neighbour count
+        strideL0_ = maxM0_ + 1;              
         strideUpper_ = maxM_ + 1;
         linksL0_.assign(maxElements_ * strideL0_, 0);
         linksUpper_.resize(maxElements_);
@@ -202,10 +210,10 @@ public:
         visitedPool_ = std::make_unique<VisitedListPool>(1, maxElements_);
     }
 
-    // ---- write path -------------------------------------------------------
+    
 
-    // Adds a vector. Returns the internal id. Thread-safe.
-    idx_t addPoint(const float* vec, label_t label) {
+    
+    idx_t addPoint(const float* vec, Label label) {
         {
             std::lock_guard<std::mutex> g(labelLock_);
             if (labelToId_.count(label))
@@ -218,7 +226,7 @@ public:
             throw std::runtime_error("index is full: raise maxElements");
         }
 
-        // Copy (and normalize, for cosine) into the arena.
+        
         float* dst = mutableData(id);
         std::memcpy(dst, vec, dim_ * sizeof(float));
         if (space_ == Space::Cosine) normalizeInPlace(dst);
@@ -234,8 +242,8 @@ public:
         levels_[id] = level;
         if (level > 0) linksUpper_[id].assign(static_cast<size_t>(level) * strideUpper_, 0);
 
-        // Take the exclusive lock ONLY if this node will become the new entry
-        // point; otherwise a shared lock is enough to read it consistently.
+        
+        
         std::unique_lock<std::shared_mutex> entryWrite(entryLock_, std::defer_lock);
         std::shared_lock<std::shared_mutex> entryRead(entryLock_, std::defer_lock);
         int  curMaxLevel;
@@ -250,17 +258,17 @@ public:
         if (becomesEntry) { entryWrite.lock(); curMaxLevel = maxLevel_; curEntry = entryPoint_; }
         else              { entryRead.lock();  curMaxLevel = maxLevel_; curEntry = entryPoint_; }
 
-        if (curEntry == kNone) {                       // first element ever
+        if (curEntry == kNone) {                       
             entryPoint_ = id;
             maxLevel_ = level;
             return id;
         }
 
-        const float* q = getData(id);   // normalized copy, not the raw input
+        const float* q = getData(id);   
 
-        // --- Phase 1: greedy descent from the OLD entry point down to level+1.
-        // NOTE: we deliberately use the pre-insert entry point and max level.
-        // Updating them first is the bug that isolates high-level nodes.
+        
+        
+        
         idx_t cur = curEntry;
         if (level < curMaxLevel) {
             dist_t curDist = distance(q, id, cur);
@@ -268,22 +276,22 @@ public:
                 cur = greedyDescend(q, id, cur, curDist, l);
         }
 
-        // --- Phase 2: beam search + connect, from min(level, maxLevel) down to 0.
+        
         for (int l = std::min(level, curMaxLevel); l >= 0; --l) {
-            auto top = searchLayer(q, id, cur, efConstruction_, l, /*filterDeleted=*/false);
+            auto top = searchLayer(q, id, cur, efConstruction_, l, false);
             cur = connectNewElement(id, std::move(top), l);
         }
 
-        if (level > curMaxLevel) {                     // promote entry point last
+        if (level > curMaxLevel) {                     
             entryPoint_ = id;
             maxLevel_ = level;
         }
         return id;
     }
 
-    // Soft delete. The node stays in the graph as a connector but is filtered
-    // out of query results.
-    bool markDeleted(label_t label) {
+    
+    
+    bool markDeleted(Label label) {
         std::lock_guard<std::mutex> g(labelLock_);
         auto it = labelToId_.find(label);
         if (it == labelToId_.end()) return false;
@@ -293,7 +301,7 @@ public:
         return true;
     }
 
-    bool unmarkDeleted(label_t label) {
+    bool unmarkDeleted(Label label) {
         std::lock_guard<std::mutex> g(labelLock_);
         auto it = labelToId_.find(label);
         if (it == labelToId_.end()) return false;
@@ -303,13 +311,13 @@ public:
         return true;
     }
 
-    // ---- read path --------------------------------------------------------
+    
 
     std::vector<SearchResult> search(const float* query, size_t k, size_t ef) const {
         std::vector<SearchResult> out;
         if (count_.load() == 0) return out;
 
-        // Normalize the query too, or cosine is wrong.
+        
         std::vector<float> qbuf;
         const float* q = query;
         if (space_ == Space::Cosine) {
@@ -331,18 +339,18 @@ public:
         for (int l = curMaxLevel; l > 0; --l)
             cur = greedyDescend(q, kNone, cur, curDist, l);
 
-        auto top = searchLayer(q, kNone, cur, std::max(ef, k), 0, /*filterDeleted=*/true);
+        auto top = searchLayer(q, kNone, cur, std::max(ef, k), 0, true);
         while (top.size() > k) top.pop();
 
         out.resize(top.size());
-        for (size_t i = out.size(); i-- > 0;) {        // heap pops farthest first
+        for (size_t i = out.size(); i-- > 0;) {        
             out[i] = SearchResult{labels_[top.top().second], top.top().first};
             top.pop();
         }
         return out;
     }
 
-    // ---- introspection ----------------------------------------------------
+    
 
     size_t size() const        { return count_.load(); }
     size_t activeSize() const  { return count_.load() - numDeleted_; }
@@ -359,7 +367,7 @@ public:
         return b;
     }
 
-    // ---- persistence ------------------------------------------------------
+    
 
     void save(const std::string& path) const {
         std::ofstream f(path, std::ios::binary);
@@ -379,7 +387,7 @@ public:
 
         w(data_.data(), cnt * dim_ * sizeof(float));
         w(levels_.data(), cnt * sizeof(int32_t));
-        w(labels_.data(), cnt * sizeof(label_t));
+        w(labels_.data(), cnt * sizeof(Label));
         w(deleted_.data(), cnt * sizeof(uint8_t));
         w(linksL0_.data(), cnt * strideL0_ * sizeof(uint32_t));
         for (uint64_t i = 0; i < cnt; ++i) {
@@ -402,7 +410,13 @@ public:
 
         r(&magic, 4); r(&version, 4);
         if (magic != kMagic) throw std::runtime_error("not an hnsw index file");
-        if (version != kVersion) throw std::runtime_error("index version mismatch");
+        if (version != kVersion)
+            throw std::runtime_error(
+                "index snapshot version " + std::to_string(version) +
+                " is not supported (expected " + std::to_string(kVersion) +
+                "); this is a breaking format change (Label is now a "
+                "16-byte {clientId, label} pair, not an 8-byte uint64) -- "
+                "old snapshots cannot be loaded and must be rebuilt");
         r(&sp, 4);
         r(&dim, 8); r(&maxEl, 8); r(&m, 8); r(&efc, 8); r(&cnt, 8); r(&ndel, 8);
         r(&ml, 4); r(&ep, 4);
@@ -410,7 +424,7 @@ public:
         auto idx = std::make_unique<Index>(static_cast<Space>(sp), dim, maxEl, m, efc);
         r(idx->data_.data(), cnt * dim * sizeof(float));
         r(idx->levels_.data(), cnt * sizeof(int32_t));
-        r(idx->labels_.data(), cnt * sizeof(label_t));
+        r(idx->labels_.data(), cnt * sizeof(Label));
         r(idx->deleted_.data(), cnt * sizeof(uint8_t));
         r(idx->linksL0_.data(), cnt * idx->strideL0_ * sizeof(uint32_t));
         for (uint64_t i = 0; i < cnt; ++i) {
@@ -429,28 +443,28 @@ public:
     }
 
 private:
-    static constexpr size_t   kMaxDegree = 256;   // upper bound on maxM0_
+    static constexpr size_t   kMaxDegree = 256;   
     static constexpr idx_t    kNone = std::numeric_limits<idx_t>::max();
-    static constexpr uint32_t kMagic = 0x484E5357;   // "HNSW"
-    static constexpr uint32_t kVersion = 1;
+    static constexpr uint32_t kMagic = 0x484E5357;
+    static constexpr uint32_t kVersion = 2;   // v2: Label is {clientId, label}, not bare uint64
 
-    // Max-heap: top() is the FARTHEST. Used for the result set.
+    
     struct FartherFirst {
         bool operator()(const Cand& a, const Cand& b) const { return a.first < b.first; }
     };
-    // Min-heap: top() is the CLOSEST. Used for the frontier.
+    
     struct CloserFirst {
         bool operator()(const Cand& a, const Cand& b) const { return a.first > b.first; }
     };
     using MaxHeap = std::priority_queue<Cand, std::vector<Cand>, FartherFirst>;
     using MinHeap = std::priority_queue<Cand, std::vector<Cand>, CloserFirst>;
 
-    // ---- storage accessors ------------------------------------------------
+    
 
     inline const float* getData(idx_t id) const { return data_.data() + static_cast<size_t>(id) * dim_; }
     inline float*   mutableData(idx_t id)       { return data_.data() + static_cast<size_t>(id) * dim_; }
 
-    // Layout: [count, n0, n1, ... ] at a fixed stride per (node, level).
+    
     inline uint32_t* linkBlock(idx_t id, int level) {
         return level == 0
             ? linksL0_.data() + static_cast<size_t>(id) * strideL0_
@@ -474,7 +488,7 @@ private:
 
     void normalizeInPlace(float* v) const {
         float norm = std::sqrt(dotProduct(v, v, dim_));
-        if (norm <= 1e-30f) return;                  // leave zero vectors alone
+        if (norm <= 1e-30f) return;                  
         float inv = 1.0f / norm;
         for (size_t i = 0; i < dim_; ++i) v[i] *= inv;
     }
@@ -483,15 +497,15 @@ private:
         return space_ == Space::Cosine ? cosineDistance(a, b, dim_)
                                        : l2SquaredDistance(a, b, dim_);
     }
-    // `queryId` is kNone for external queries, or the internal id when the
-    // query vector is already stored in the arena (during insert).
-    inline dist_t distance(const float* q, idx_t /*queryId*/, idx_t target) const {
+    
+    
+    inline dist_t distance(const float* q, idx_t , idx_t target) const {
         return rawDistance(q, getData(target));
     }
 
-    // ---- Algorithm 1 helper: greedy descent at one upper layer ------------
-    // Hops to the closest neighbour repeatedly until no neighbour improves.
-    // This is searchLayer with ef = 1, written out for speed.
+    
+    
+    
     idx_t greedyDescend(const float* q, idx_t qid, idx_t entry, dist_t& curDist, int level) const {
         idx_t cur = entry;
         curDist = distance(q, qid, cur);
@@ -510,16 +524,16 @@ private:
         return cur;
     }
 
-    // ---- Algorithm 2: SEARCH-LAYER ---------------------------------------
-    // Best-first traversal. Expands the closest unvisited candidate until the
-    // frontier can no longer improve on the worst element of the result set.
+    
+    
+    
     MaxHeap searchLayer(const float* q, idx_t qid, idx_t entry, size_t ef,
                         int level, bool filterDeleted) const {
         auto visited = visitedPool_->acquire();
         visited->reset();
 
-        MaxHeap results;   // closest ef found so far (top = worst)
-        MinHeap frontier;  // still to expand   (top = best)
+        MaxHeap results;   
+        MinHeap frontier;  
 
         dist_t d0 = distance(q, qid, entry);
         frontier.emplace(d0, entry);
@@ -531,14 +545,14 @@ private:
 
         while (!frontier.empty()) {
             Cand best = frontier.top();
-            // Nothing left that could beat our current worst result.
+            
             if (best.first > worst && results.size() >= ef) break;
             frontier.pop();
 
             std::unique_lock<std::mutex> g(linkLocks_[best.second]);
             const uint32_t* blk = linkBlock(best.second, level);
             uint32_t n = blk[0];
-            // Copy under the lock, evaluate distances outside it.
+            
             uint32_t buf[kMaxDegree];
             n = std::min<uint32_t>(n, kMaxDegree);
             std::memcpy(buf, blk + 1, n * sizeof(uint32_t));
@@ -563,15 +577,15 @@ private:
         return results;
     }
 
-    // ---- Algorithm 4: SELECT-NEIGHBORS-HEURISTIC -------------------------
-    // Keep candidate c only if it is closer to the query than to every
-    // neighbour already selected. This is what preserves long-range links and
-    // stops the graph collapsing into disconnected clusters.
+    
+    
+    
+    
     std::vector<idx_t> selectNeighborsHeuristic(MaxHeap top, size_t M) const {
         std::vector<Cand> cands;
         cands.reserve(top.size());
         while (!top.empty()) { cands.push_back(top.top()); top.pop(); }
-        std::sort(cands.begin(), cands.end());       // ascending by distance
+        std::sort(cands.begin(), cands.end());       
 
         std::vector<idx_t> kept;
         if (cands.size() <= M) {
@@ -591,7 +605,7 @@ private:
             if (keep) kept.push_back(c.second);
             else      discarded.push_back(c);
         }
-        // Backfill so degree does not collapse on tight clusters.
+        
         for (const auto& d : discarded) {
             if (kept.size() >= M) break;
             kept.push_back(d.second);
@@ -599,10 +613,10 @@ private:
         return kept;
     }
 
-    // ---- Algorithm 1, connection step ------------------------------------
-    // Links `id` to its selected neighbours and re-prunes each neighbour's own
-    // list with the same heuristic. Returns the closest neighbour, which
-    // becomes the entry point for the next layer down.
+    
+    
+    
+    
     idx_t connectNewElement(idx_t id, MaxHeap top, int level) {
         size_t maxDeg = (level == 0) ? maxM0_ : maxM_;
         std::vector<idx_t> selected = selectNeighborsHeuristic(std::move(top), M_);
@@ -619,13 +633,13 @@ private:
             uint32_t* blk = linkBlock(n, level);
             uint32_t deg = blk[0];
 
-            if (deg < maxDeg) {                    // room to spare: just append
+            if (deg < maxDeg) {                    
                 blk[deg + 1] = id;
                 blk[0] = deg + 1;
                 continue;
             }
-            // Full. Re-run the heuristic over {existing neighbours} + {id}
-            // rather than blindly evicting the farthest.
+            
+            
             MaxHeap pool;
             pool.emplace(rawDistance(getData(n), getData(id)), id);
             for (uint32_t i = 0; i < deg; ++i) {
@@ -637,9 +651,9 @@ private:
         return nextEntry;
     }
 
-    // ---- level assignment -------------------------------------------------
-    // floor(-ln(U(0,1)) * mL) with mL = 1/ln(M), per the paper. Gives an
-    // exponential decay tuned to M -- NOT a coin flip.
+    
+    
+    
     int randomLevel() {
         std::uniform_real_distribution<double> dis(0.0, 1.0);
         double u;
@@ -651,7 +665,7 @@ private:
         return static_cast<int>(-std::log(u) * levelMult_);
     }
 
-    // ---- members ----------------------------------------------------------
+    
     Space  space_;
     size_t dim_;
     size_t maxElements_;
@@ -659,11 +673,11 @@ private:
     size_t strideL0_ = 0, strideUpper_ = 0;
     double levelMult_;
 
-    std::vector<float>    data_;        // maxElements * dim, contiguous
+    std::vector<float>    data_;        
     std::vector<int32_t>  levels_;
-    std::vector<label_t>  labels_;
+    std::vector<Label>    labels_;
     std::vector<uint8_t>  deleted_;
-    std::vector<uint32_t> linksL0_;     // maxElements * (2M + 1)
+    std::vector<uint32_t> linksL0_;     
     std::vector<std::vector<uint32_t>> linksUpper_;
 
     std::atomic<size_t> count_{0};
@@ -671,7 +685,7 @@ private:
     idx_t  entryPoint_ = kNone;
     int    maxLevel_ = 0;
 
-    std::unordered_map<label_t, idx_t> labelToId_;
+    std::unordered_map<Label, idx_t, LabelHash> labelToId_;
 
     mutable std::vector<std::mutex>  linkLocks_;
     mutable std::shared_mutex        entryLock_;
@@ -681,4 +695,4 @@ private:
     std::unique_ptr<VisitedListPool> visitedPool_;
 };
 
-} // namespace hnsw
+} 

@@ -1,17 +1,17 @@
-// sift_bench.cpp -- benchmark against the standard SIFT1M / GIST1M / etc.
-// texmex-corpus format (.fvecs base + query, .ivecs ground truth).
-//
-// Usage:
-//   sift_bench <base.fvecs> <query.fvecs> <groundtruth.ivecs> [N] [M] [efConstruction]
-//
-//   N              -- number of base vectors to index (default: all in file)
-//   M              -- graph out-degree (default 16)
-//   efConstruction -- build beam width (default 200)
-//
-// Unlike benchmark.cpp, ground truth here is NOT computed by brute force --
-// it ships with the dataset, precomputed once by the dataset authors. This is
-// both faster and the standard way these datasets are used, so your numbers
-// are directly comparable to published results.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #include "hnsw.hpp"
 
@@ -26,22 +26,22 @@
 using namespace hnsw;
 using Clock = std::chrono::steady_clock;
 
-// ---------------------------------------------------------------------------
-// .fvecs / .ivecs reader
-//
-// Format (little-endian, used unchanged since the original texmex corpus):
-//   repeated records, each:
-//     int32   d          -- dimension of this vector
-//     d * T   values      -- T = float32 for .fvecs, int32 for .ivecs
-//
-// Every record in a given file has the same d in practice, so we read it once
-// from the first record and use it to compute how many records the file holds
-// from its size -- no separate index or header.
-// ---------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
 
 template <typename T>
 struct VecFile {
-    std::vector<T> data;   // n * d, contiguous, row-major
+    std::vector<T> data;   
     size_t n = 0, d = 0;
 };
 
@@ -89,7 +89,7 @@ static double percentile(std::vector<double> v, double p) {
     return v[i];
 }
 
-// ---------------------------------------------------------------------------
+
 
 int main(int argc, char** argv) {
     if (argc < 4) {
@@ -99,10 +99,10 @@ int main(int argc, char** argv) {
         return 1;
     }
     const std::string basePath = argv[1], queryPath = argv[2], gtPath = argv[3];
-    const size_t N       = (argc > 4) ? std::stoul(argv[4]) : 0;   // 0 = all
+    const size_t N       = (argc > 4) ? std::stoul(argv[4]) : 0;   
     const size_t M       = (argc > 5) ? std::stoul(argv[5]) : 16;
     const size_t EF_CONS = (argc > 6) ? std::stoul(argv[6]) : 200;
-    const size_t K       = 10;   // standard recall@10
+    const size_t K       = 10;   
 
     std::cout << "loading base vectors from " << basePath << " ...\n";
     auto base = readVecs<float>(basePath, N);
@@ -123,19 +123,22 @@ int main(int argc, char** argv) {
     if (gt.d < K)
         throw std::runtime_error("ground truth has fewer than K neighbours per row");
 
-    // If we indexed only a subset (N < full base), ground truth computed
-    // against the FULL base is no longer valid -- neighbours may have been
-    // excluded. Only meaningful to compare recall when N == 0 (full base).
-    bool subsetWarning = (N != 0 && N < 1000000);   // heuristic; texmex bases are ~1M
+    
+    
+    
+    bool subsetWarning = (N != 0 && N < 1000000);   
 
     std::cout << "HNSW build: dim=" << base.d << " M=" << M
               << " efConstruction=" << EF_CONS << " space=L2\n";
+
+    // Single-tenant benchmark -- every vector belongs to the same fixed client.
+    constexpr uint64_t kBenchClientId = 1;
 
     Index index(Space::L2, base.d, base.n, M, EF_CONS);
 
     auto t0 = Clock::now();
     for (size_t i = 0; i < base.n; ++i) {
-        index.addPoint(base.data.data() + i * base.d, static_cast<label_t>(i));
+        index.addPoint(base.data.data() + i * base.d, Label{kBenchClientId, static_cast<uint64_t>(i)});
         if ((i + 1) % 100000 == 0)
             std::cout << "  inserted " << (i + 1) << " / " << base.n << "\n";
     }
@@ -154,7 +157,7 @@ int main(int argc, char** argv) {
                      "Run with N=0 (all vectors) for a real comparison.\n";
     std::cout << "\n";
 
-    const size_t NQUERY = queries.n;   // typically 10,000 for SIFT1M
+    const size_t NQUERY = queries.n;   
 
     std::cout << "efSearch |  recall@" << K << "  |  p50 (ms)  p95 (ms)  p99 (ms)  |   QPS\n"
               << "---------+------------+---------------------------------+---------\n";
@@ -172,11 +175,11 @@ int main(int argc, char** argv) {
             auto s1 = Clock::now();
             latencies.push_back(std::chrono::duration<double, std::milli>(s1 - s0).count());
 
-            // ground-truth row q, first K entries, sorted nearest-first
+            
             const int32_t* truth = gt.data.data() + q * gt.d;
             for (const auto& r : res)
                 for (size_t t = 0; t < K; ++t)
-                    if (static_cast<int32_t>(r.label) == truth[t]) { ++hits; break; }
+                    if (static_cast<int32_t>(r.label.label) == truth[t]) { ++hits; break; }
         }
 
         double recall = static_cast<double>(hits) / (NQUERY * K);

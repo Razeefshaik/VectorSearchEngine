@@ -1,9 +1,3 @@
-// stress.cpp -- concurrent insert + query, to be run under -fsanitize=thread.
-//
-//   g++ -std=c++17 -O1 -g -fsanitize=thread -Iinclude src/stress.cpp -o stress -pthread
-//
-// This is the test that catches the data races cgo will otherwise expose in
-// production, where Go serves many requests per second against one index.
 
 #include "hnsw.hpp"
 #include <atomic>
@@ -32,11 +26,11 @@ int main() {
         threads.emplace_back([&] {
             size_t i;
             while ((i = next.fetch_add(1)) < N)
-                index.addPoint(base.data() + i * DIM, static_cast<label_t>(i));
+                index.addPoint(base.data() + i * DIM, Label{1, static_cast<uint64_t>(i)});
         });
     }
     for (size_t r = 0; r < READERS; ++r) {
-        threads.emplace_back([&] {
+        threads.emplace_back([&, r] {           
             std::mt19937 local(r + 1);
             std::normal_distribution<float> d(0.f, 1.f);
             std::vector<float> q(DIM);
@@ -59,7 +53,7 @@ int main() {
 
     auto res = index.search(base.data(), 10, 100);
     std::cout << "sanity query returned " << res.size()
-              << " results, nearest label=" << (res.empty() ? 0 : res[0].label)
+              << " results, nearest label=" << (res.empty() ? 0 : res[0].label.label)
               << " (expected 0)\n";
     return 0;
 }

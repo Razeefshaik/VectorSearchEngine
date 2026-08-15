@@ -1,16 +1,9 @@
-// Package hnsw wraps the C++ HNSW index over cgo.
-//
-// Build the shared library first:
-//
-//	cmake -B build && cmake --build build
-//
-// Then set the flags below to point at it (or install the library system-wide).
 package hnsw
 
 /*
 #cgo CXXFLAGS: -std=c++17 -O3 -march=native
-#cgo CFLAGS: -I${SRCDIR}/../include
-#cgo LDFLAGS: -L${SRCDIR}/../build -lhnsw -lstdc++ -lm
+#cgo CFLAGS: -I${SRCDIR}/../../include
+#cgo LDFLAGS: -L${SRCDIR}/../../build -Wl,-rpath,${SRCDIR}/../../build -lhnsw -lstdc++ -lm
 #include <stdlib.h>
 #include "hnsw_c.h"
 */
@@ -30,14 +23,27 @@ const (
 	L2     Space = C.HNSW_SPACE_L2
 )
 
-// Index is a handle to the C++ index. It is safe for concurrent use.
+var (
+	ErrDuplicateLabel = errors.New("hnsw: label already exists")
+	ErrNotFound       = errors.New("hnsw: label not found")
+	ErrFull           = errors.New("hnsw: index is full")
+)
+
 type Index struct {
 	ptr *C.HnswIndex
 	dim int
 }
 
-type Result struct {
+// Key identifies a vector. Two different clients can pick the same Label
+// value for unrelated vectors without colliding -- identity is the whole
+// (ClientID, Label) pair, compared exactly, not a hash of it.
+type Key struct {
+	ClientID uint64
 	Label    uint64
+}
+
+type Result struct {
+	Key      Key
 	Distance float32
 }
 
@@ -49,8 +55,6 @@ func lastError() error {
 	return fmt.Errorf("hnsw: %s", msg)
 }
 
-// New allocates an index. Capacity is fixed at construction: the C++ side
-// preallocates so that inserts never reallocate under concurrent readers.
 func New(space Space, dim, maxElements, m, efConstruction int, seed uint64) (*Index, error) {
 	ptr := C.hnsw_new(C.int(space), C.size_t(dim), C.size_t(maxElements),
 		C.size_t(m), C.size_t(efConstruction), C.uint64_t(seed))
@@ -70,23 +74,26 @@ func (i *Index) Close() {
 	}
 }
 
-// Add inserts one vector. vec must have length Dim().
-func (i *Index) Add(vec []float32, label uint64) error {
+func (i *Index) Add(vec []float32, key Key) error {
 	if len(vec) != i.dim {
 		return fmt.Errorf("hnsw: expected %d dims, got %d", i.dim, len(vec))
 	}
-	// &vec[0] is a Go pointer to Go memory containing no Go pointers, so it is
-	// legal to pass to C for the duration of the call (cgo pointer rule 1).
-	rc := C.hnsw_add(i.ptr, (*C.float)(unsafe.Pointer(&vec[0])), C.uint64_t(label))
-	if rc != C.HNSW_OK {
+
+	rc := C.hnsw_add(i.ptr, (*C.float)(unsafe.Pointer(&vec[0])),
+		C.uint64_t(key.ClientID), C.uint64_t(key.Label))
+	runtime.KeepAlive(vec)
+	switch rc {
+	case C.HNSW_OK:
+		return nil
+	case C.HNSW_ERR_DUPLICATE:
+		return ErrDuplicateLabel
+	case C.HNSW_ERR_FULL:
+		return ErrFull
+	default:
 		return lastError()
 	}
-	runtime.KeepAlive(vec)
-	return nil
 }
 
-// Search returns up to k nearest neighbours. ef controls the recall/latency
-// tradeoff; it must be >= k. Higher ef means better recall and slower queries.
 func (i *Index) Search(query []float32, k, ef int) ([]Result, error) {
 	if len(query) != i.dim {
 		return nil, fmt.Errorf("hnsw: expected %d dims, got %d", i.dim, len(query))
@@ -94,12 +101,14 @@ func (i *Index) Search(query []float32, k, ef int) ([]Result, error) {
 	if ef < k {
 		ef = k
 	}
+	clientIDs := make([]uint64, k)
 	labels := make([]uint64, k)
 	dists := make([]float32, k)
 
 	n := C.hnsw_search(i.ptr,
 		(*C.float)(unsafe.Pointer(&query[0])),
 		C.size_t(k), C.size_t(ef),
+		(*C.uint64_t)(unsafe.Pointer(&clientIDs[0])),
 		(*C.uint64_t)(unsafe.Pointer(&labels[0])),
 		(*C.float)(unsafe.Pointer(&dists[0])))
 	runtime.KeepAlive(query)
@@ -109,16 +118,31 @@ func (i *Index) Search(query []float32, k, ef int) ([]Result, error) {
 	}
 	out := make([]Result, n)
 	for j := 0; j < int(n); j++ {
-		out[j] = Result{Label: labels[j], Distance: dists[j]}
+		out[j] = Result{Key: Key{ClientID: clientIDs[j], Label: labels[j]}, Distance: dists[j]}
 	}
 	return out, nil
 }
 
-func (i *Index) MarkDeleted(label uint64) error {
-	if rc := C.hnsw_mark_deleted(i.ptr, C.uint64_t(label)); rc != C.HNSW_OK {
+func (i *Index) MarkDeleted(key Key) error {
+	switch rc := C.hnsw_mark_deleted(i.ptr, C.uint64_t(key.ClientID), C.uint64_t(key.Label)); rc {
+	case C.HNSW_OK:
+		return nil
+	case C.HNSW_ERR_NOT_FOUND:
+		return ErrNotFound
+	default:
 		return lastError()
 	}
-	return nil
+}
+
+func (i *Index) UnmarkDeleted(key Key) error {
+	switch rc := C.hnsw_unmark_deleted(i.ptr, C.uint64_t(key.ClientID), C.uint64_t(key.Label)); rc {
+	case C.HNSW_OK:
+		return nil
+	case C.HNSW_ERR_NOT_FOUND:
+		return ErrNotFound
+	default:
+		return lastError()
+	}
 }
 
 func (i *Index) Save(path string) error {
@@ -145,4 +169,5 @@ func Load(path string) (*Index, error) {
 func (i *Index) Len() int         { return int(C.hnsw_size(i.ptr)) }
 func (i *Index) ActiveLen() int   { return int(C.hnsw_active_size(i.ptr)) }
 func (i *Index) Dim() int         { return i.dim }
+func (i *Index) Capacity() int    { return int(C.hnsw_capacity(i.ptr)) }
 func (i *Index) MemoryBytes() int { return int(C.hnsw_memory_bytes(i.ptr)) }
