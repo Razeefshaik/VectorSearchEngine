@@ -181,7 +181,7 @@ layers just need to be navigable, not precise.
 
 ### 3.4 No payloads in the index
 
-The index maps `vector -> uint64 label`. It does not store your document text.
+The index maps `vector -> Label {clientId, label}`. It does not store your document text.
 
 That's deliberate, and it's the right call for your architecture: the C++ core
 should be a pure numeric index. Document text, metadata, and filters live in the
@@ -543,7 +543,7 @@ distant neighbour in a direction nothing else covers survives the rule.
 ## 8. Insert — Algorithm 1
 
 ```cpp
-idx_t addPoint(const float* vec, label_t label) {
+idx_t addPoint(const float* vec, Label label) {
     idx_t id = count_.fetch_add(1);
 
     float* dst = mutableData(id);
@@ -644,7 +644,7 @@ True deletion from a graph is nasty: remove a node and you may sever the only
 path between two regions. So this uses **soft deletes**:
 
 ```cpp
-bool markDeleted(label_t label) {
+bool markDeleted(Label label) {
     deleted_[it->second] = 1;
     ++numDeleted_;
 }

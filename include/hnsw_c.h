@@ -1,9 +1,4 @@
 
-
-
-
-
-
 #ifndef HNSW_C_H
 #define HNSW_C_H
 
@@ -33,15 +28,17 @@ HnswIndex* hnsw_new(int space, size_t dim, size_t max_elements,
 void hnsw_free(HnswIndex* idx);
 
 
-int hnsw_add(HnswIndex* idx, const float* vec, uint64_t label);
+int hnsw_add(HnswIndex* idx, const float* vec, uint64_t client_id, uint64_t label);
 
 
 
+// out_client_ids and out_labels are parallel arrays (same index i refers to
+// the same result), matching the existing out_labels/out_distances style.
 int hnsw_search(HnswIndex* idx, const float* query, size_t k, size_t ef,
-                uint64_t* out_labels, float* out_distances);
+                uint64_t* out_client_ids, uint64_t* out_labels, float* out_distances);
 
-int hnsw_mark_deleted(HnswIndex* idx, uint64_t label);
-int hnsw_unmark_deleted(HnswIndex* idx, uint64_t label);
+int hnsw_mark_deleted(HnswIndex* idx, uint64_t client_id, uint64_t label);
+int hnsw_unmark_deleted(HnswIndex* idx, uint64_t client_id, uint64_t label);
 
 size_t hnsw_size(HnswIndex* idx);
 size_t hnsw_active_size(HnswIndex* idx);

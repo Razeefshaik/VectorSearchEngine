@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"hnswdb/hnsw"
 	"hnswdb/wal"
@@ -85,21 +86,22 @@ func reopenWAL(path string, lastGoodOffset int64) (*wal.WAL, error) {
 }
 
 func apply(idx *hnsw.Index, r wal.Record) error {
+	key := hnsw.Key{ClientID: r.ClientID, Label: r.Label}
 	switch r.Op {
 	case wal.OpAdd:
-		err := idx.Add(r.Vector, r.Label)
+		err := idx.Add(r.Vector, key)
 		if errors.Is(err, hnsw.ErrDuplicateLabel) {
 			return nil
 		}
 		return err
 	case wal.OpMarkDeleted:
-		err := idx.MarkDeleted(r.Label)
+		err := idx.MarkDeleted(key)
 		if errors.Is(err, hnsw.ErrNotFound) {
 			return nil
 		}
 		return err
 	case wal.OpUnmarkDeleted:
-		err := idx.UnmarkDeleted(r.Label)
+		err := idx.UnmarkDeleted(key)
 		if errors.Is(err, hnsw.ErrNotFound) {
 			return nil
 		}
@@ -109,28 +111,28 @@ func apply(idx *hnsw.Index, r wal.Record) error {
 	}
 }
 
-func (d *Index) Add(vec []float32, label uint64) error {
-	if err := d.w.Append(wal.Record{Op: wal.OpAdd, Label: label, Vector: vec}); err != nil {
+func (d *Index) Add(vec []float32, key hnsw.Key) error {
+	if err := d.w.Append(wal.Record{Op: wal.OpAdd, ClientID: key.ClientID, Label: key.Label, Vector: vec}); err != nil {
 		return fmt.Errorf("durable: wal append: %w", err)
 	}
-	if err := d.idx.Add(vec, label); err != nil {
+	if err := d.idx.Add(vec, key); err != nil {
 		return fmt.Errorf("durable: index add (already logged to WAL): %w", err)
 	}
 	return nil
 }
 
-func (d *Index) MarkDeleted(label uint64) error {
-	if err := d.w.Append(wal.Record{Op: wal.OpMarkDeleted, Label: label}); err != nil {
+func (d *Index) MarkDeleted(key hnsw.Key) error {
+	if err := d.w.Append(wal.Record{Op: wal.OpMarkDeleted, ClientID: key.ClientID, Label: key.Label}); err != nil {
 		return fmt.Errorf("durable: wal append: %w", err)
 	}
-	return d.idx.MarkDeleted(label)
+	return d.idx.MarkDeleted(key)
 }
 
-func (d *Index) UnmarkDeleted(label uint64) error {
-	if err := d.w.Append(wal.Record{Op: wal.OpUnmarkDeleted, Label: label}); err != nil {
+func (d *Index) UnmarkDeleted(key hnsw.Key) error {
+	if err := d.w.Append(wal.Record{Op: wal.OpUnmarkDeleted, ClientID: key.ClientID, Label: key.Label}); err != nil {
 		return fmt.Errorf("durable: wal append: %w", err)
 	}
-	return d.idx.UnmarkDeleted(label)
+	return d.idx.UnmarkDeleted(key)
 }
 
 func (d *Index) Search(query []float32, k, ef int) ([]hnsw.Result, error) {
@@ -142,7 +144,7 @@ func (d *Index) Snapshot() error {
 	if err := d.idx.Save(tmpSnapshot); err != nil {
 		return fmt.Errorf("durable: saving snapshot: %w", err)
 	}
-	if err := os.Rename(tmpSnapshot, d.cfg.SnapshotPath); err != nil {
+	if err := renameWithRetry(tmpSnapshot, d.cfg.SnapshotPath); err != nil {
 		return fmt.Errorf("durable: renaming snapshot into place: %w", err)
 	}
 
@@ -151,16 +153,45 @@ func (d *Index) Snapshot() error {
 	if err != nil {
 		return fmt.Errorf("durable: creating new WAL: %w", err)
 	}
+	// Unlike POSIX rename, Windows refuses to rename a file as either the
+	// source or the destination while any handle to it is still open. Close
+	// both the old WAL and the freshly created one before renaming, then
+	// reopen the rotated file for append.
 	if err := d.w.Close(); err != nil {
 		newWAL.Close()
 		os.Remove(tmpWALPath)
 		return fmt.Errorf("durable: closing old WAL: %w", err)
 	}
-	if err := os.Rename(tmpWALPath, d.cfg.WALPath); err != nil {
+	if err := newWAL.Close(); err != nil {
+		os.Remove(tmpWALPath)
+		return fmt.Errorf("durable: closing new WAL: %w", err)
+	}
+	if err := renameWithRetry(tmpWALPath, d.cfg.WALPath); err != nil {
 		return fmt.Errorf("durable: rotating WAL into place: %w", err)
 	}
-	d.w = newWAL
+	w, err := wal.OpenForAppend(d.cfg.WALPath, -1)
+	if err != nil {
+		return fmt.Errorf("durable: reopening rotated WAL: %w", err)
+	}
+	d.w = w
 	return nil
+}
+
+// renameWithRetry retries os.Rename briefly on failure. Even after a handle
+// is closed, Windows can report ERROR_SHARING_VIOLATION for a short window
+// afterward (commonly caused by antivirus/indexer scanning touching the file
+// the instant it closes) where POSIX rename would have succeeded
+// unconditionally. The retries are a no-op on platforms/situations where the
+// first attempt already succeeds.
+func renameWithRetry(oldpath, newpath string) error {
+	var err error
+	for i := 0; i < 10; i++ {
+		if err = os.Rename(oldpath, newpath); err == nil {
+			return nil
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return err
 }
 
 func (d *Index) Close() error {

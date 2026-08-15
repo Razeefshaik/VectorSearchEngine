@@ -1,21 +1,5 @@
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 #pragma once
 
 #include <algorithm>
@@ -24,6 +8,7 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -41,9 +26,32 @@
 
 namespace hnsw {
 
-using idx_t = uint32_t;   
+using idx_t = uint32_t;
 using dist_t = float;
-using label_t = uint64_t; 
+
+// A label is scoped to the client that chose it: two different clients can
+// legitimately pick the same numeric label for two unrelated vectors, so
+// identity is the (clientId, label) pair, not label alone. Uniqueness is
+// guaranteed by operator== (exact struct equality), not by LabelHash -- the
+// hash is free to collide internally, since std::unordered_map already
+// resolves same-bucket collisions via operator==.
+struct Label {
+    uint64_t clientId;
+    uint64_t label;
+
+    bool operator==(const Label& other) const {
+        return clientId == other.clientId && label == other.label;
+    }
+    bool operator!=(const Label& other) const { return !(*this == other); }
+};
+
+struct LabelHash {
+    size_t operator()(const Label& l) const {
+        size_t h1 = std::hash<uint64_t>{}(l.clientId);
+        size_t h2 = std::hash<uint64_t>{}(l.label);
+        return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
+    }
+};
 
 
 enum class Space : int { Cosine = 0, L2 = 1 };
@@ -162,8 +170,8 @@ public:
     using Cand = std::pair<dist_t, idx_t>;
 
     struct SearchResult {
-        label_t label;
-        dist_t  distance;
+        Label  label;
+        dist_t distance;
     };
 
     
@@ -190,7 +198,7 @@ public:
 
         data_.assign(maxElements_ * dim_, 0.0f);
         levels_.assign(maxElements_, 0);
-        labels_.assign(maxElements_, 0);
+        labels_.assign(maxElements_, Label{0, 0});
         deleted_.assign(maxElements_, 0);
 
         strideL0_ = maxM0_ + 1;              
@@ -205,7 +213,7 @@ public:
     
 
     
-    idx_t addPoint(const float* vec, label_t label) {
+    idx_t addPoint(const float* vec, Label label) {
         {
             std::lock_guard<std::mutex> g(labelLock_);
             if (labelToId_.count(label))
@@ -283,7 +291,7 @@ public:
 
     
     
-    bool markDeleted(label_t label) {
+    bool markDeleted(Label label) {
         std::lock_guard<std::mutex> g(labelLock_);
         auto it = labelToId_.find(label);
         if (it == labelToId_.end()) return false;
@@ -293,7 +301,7 @@ public:
         return true;
     }
 
-    bool unmarkDeleted(label_t label) {
+    bool unmarkDeleted(Label label) {
         std::lock_guard<std::mutex> g(labelLock_);
         auto it = labelToId_.find(label);
         if (it == labelToId_.end()) return false;
@@ -379,7 +387,7 @@ public:
 
         w(data_.data(), cnt * dim_ * sizeof(float));
         w(levels_.data(), cnt * sizeof(int32_t));
-        w(labels_.data(), cnt * sizeof(label_t));
+        w(labels_.data(), cnt * sizeof(Label));
         w(deleted_.data(), cnt * sizeof(uint8_t));
         w(linksL0_.data(), cnt * strideL0_ * sizeof(uint32_t));
         for (uint64_t i = 0; i < cnt; ++i) {
@@ -402,7 +410,13 @@ public:
 
         r(&magic, 4); r(&version, 4);
         if (magic != kMagic) throw std::runtime_error("not an hnsw index file");
-        if (version != kVersion) throw std::runtime_error("index version mismatch");
+        if (version != kVersion)
+            throw std::runtime_error(
+                "index snapshot version " + std::to_string(version) +
+                " is not supported (expected " + std::to_string(kVersion) +
+                "); this is a breaking format change (Label is now a "
+                "16-byte {clientId, label} pair, not an 8-byte uint64) -- "
+                "old snapshots cannot be loaded and must be rebuilt");
         r(&sp, 4);
         r(&dim, 8); r(&maxEl, 8); r(&m, 8); r(&efc, 8); r(&cnt, 8); r(&ndel, 8);
         r(&ml, 4); r(&ep, 4);
@@ -410,7 +424,7 @@ public:
         auto idx = std::make_unique<Index>(static_cast<Space>(sp), dim, maxEl, m, efc);
         r(idx->data_.data(), cnt * dim * sizeof(float));
         r(idx->levels_.data(), cnt * sizeof(int32_t));
-        r(idx->labels_.data(), cnt * sizeof(label_t));
+        r(idx->labels_.data(), cnt * sizeof(Label));
         r(idx->deleted_.data(), cnt * sizeof(uint8_t));
         r(idx->linksL0_.data(), cnt * idx->strideL0_ * sizeof(uint32_t));
         for (uint64_t i = 0; i < cnt; ++i) {
@@ -431,8 +445,8 @@ public:
 private:
     static constexpr size_t   kMaxDegree = 256;   
     static constexpr idx_t    kNone = std::numeric_limits<idx_t>::max();
-    static constexpr uint32_t kMagic = 0x484E5357;   
-    static constexpr uint32_t kVersion = 1;
+    static constexpr uint32_t kMagic = 0x484E5357;
+    static constexpr uint32_t kVersion = 2;   // v2: Label is {clientId, label}, not bare uint64
 
     
     struct FartherFirst {
@@ -661,7 +675,7 @@ private:
 
     std::vector<float>    data_;        
     std::vector<int32_t>  levels_;
-    std::vector<label_t>  labels_;
+    std::vector<Label>    labels_;
     std::vector<uint8_t>  deleted_;
     std::vector<uint32_t> linksL0_;     
     std::vector<std::vector<uint32_t>> linksUpper_;
@@ -671,7 +685,7 @@ private:
     idx_t  entryPoint_ = kNone;
     int    maxLevel_ = 0;
 
-    std::unordered_map<label_t, idx_t> labelToId_;
+    std::unordered_map<Label, idx_t, LabelHash> labelToId_;
 
     mutable std::vector<std::mutex>  linkLocks_;
     mutable std::shared_mutex        entryLock_;

@@ -1,10 +1,4 @@
 
-
-
-
-
-
-
 #include "hnsw_c.h"
 #include "hnsw.hpp"
 
@@ -42,10 +36,10 @@ void hnsw_free(HnswIndex* idx) {
     delete cast(idx);
 }
 
-int hnsw_add(HnswIndex* idx, const float* vec, uint64_t label) {
+int hnsw_add(HnswIndex* idx, const float* vec, uint64_t client_id, uint64_t label) {
     if (!idx || !vec) { setError("null argument"); return HNSW_ERR_NULL; }
     try {
-        cast(idx)->addPoint(vec, label);
+        cast(idx)->addPoint(vec, hnsw::Label{client_id, label});
         return HNSW_OK;
     } catch (const std::exception& e) {
         setError(e.what());
@@ -60,15 +54,16 @@ int hnsw_add(HnswIndex* idx, const float* vec, uint64_t label) {
 }
 
 int hnsw_search(HnswIndex* idx, const float* query, size_t k, size_t ef,
-                uint64_t* out_labels, float* out_distances) {
-    if (!idx || !query || !out_labels || !out_distances) {
+                uint64_t* out_client_ids, uint64_t* out_labels, float* out_distances) {
+    if (!idx || !query || !out_client_ids || !out_labels || !out_distances) {
         setError("null argument");
         return HNSW_ERR_NULL;
     }
     try {
         auto res = cast(idx)->search(query, k, ef);
         for (size_t i = 0; i < res.size(); ++i) {
-            out_labels[i] = res[i].label;
+            out_client_ids[i] = res[i].label.clientId;
+            out_labels[i] = res[i].label.label;
             out_distances[i] = res[i].distance;
         }
         return static_cast<int>(res.size());
@@ -81,10 +76,10 @@ int hnsw_search(HnswIndex* idx, const float* query, size_t k, size_t ef,
     }
 }
 
-int hnsw_mark_deleted(HnswIndex* idx, uint64_t label) {
+int hnsw_mark_deleted(HnswIndex* idx, uint64_t client_id, uint64_t label) {
     if (!idx) { setError("null index"); return HNSW_ERR_NULL; }
     try {
-        if (cast(idx)->markDeleted(label)) return HNSW_OK;
+        if (cast(idx)->markDeleted(hnsw::Label{client_id, label})) return HNSW_OK;
         setError("label not found or already deleted");
         return HNSW_ERR_NOT_FOUND;
     } catch (...) {
@@ -93,10 +88,10 @@ int hnsw_mark_deleted(HnswIndex* idx, uint64_t label) {
     }
 }
 
-int hnsw_unmark_deleted(HnswIndex* idx, uint64_t label) {
+int hnsw_unmark_deleted(HnswIndex* idx, uint64_t client_id, uint64_t label) {
     if (!idx) { setError("null index"); return HNSW_ERR_NULL; }
     try {
-        if (cast(idx)->unmarkDeleted(label)) return HNSW_OK;
+        if (cast(idx)->unmarkDeleted(hnsw::Label{client_id, label})) return HNSW_OK;
         setError("label not found or not currently deleted");
         return HNSW_ERR_NOT_FOUND;
     } catch (...) {

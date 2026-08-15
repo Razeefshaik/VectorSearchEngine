@@ -1,10 +1,4 @@
 
-
-
-
-
-
-
 #include "hnsw.hpp"
 #include <atomic>
 #include <iostream>
@@ -32,7 +26,7 @@ int main() {
         threads.emplace_back([&] {
             size_t i;
             while ((i = next.fetch_add(1)) < N)
-                index.addPoint(base.data() + i * DIM, static_cast<label_t>(i));
+                index.addPoint(base.data() + i * DIM, Label{1, static_cast<uint64_t>(i)});
         });
     }
     for (size_t r = 0; r < READERS; ++r) {
@@ -59,7 +53,7 @@ int main() {
 
     auto res = index.search(base.data(), 10, 100);
     std::cout << "sanity query returned " << res.size()
-              << " results, nearest label=" << (res.empty() ? 0 : res[0].label)
+              << " results, nearest label=" << (res.empty() ? 0 : res[0].label.label)
               << " (expected 0)\n";
     return 0;
 }
