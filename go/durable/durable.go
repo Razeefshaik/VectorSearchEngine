@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"hnswdb/hnsw"
@@ -22,6 +23,30 @@ type Config struct {
 }
 
 type Index struct {
+	// mu orders writes against snapshots.
+	//
+	// Writers (Add/MarkDeleted/UnmarkDeleted) take RLock: they only READ the
+	// d.w pointer, and both wal.WAL.Append and the C++ addPoint are already
+	// internally thread-safe, so any number of them may run concurrently.
+	//
+	// Snapshot takes the full Lock, for two independent reasons:
+	//
+	//  1. C++ Index::save() is NOT synchronized against addPoint(). It reads
+	//     count_, maxLevel_ and the vector arena while a concurrent insert may
+	//     be mutating them, yielding a torn snapshot. Confirmed under
+	//     ThreadSanitizer: race between save() and addPoint() in hnsw.hpp.
+	//
+	//  2. Even with an atomic save(), a write landing between save() and the
+	//     WAL rotation below would be appended to the OLD WAL and then thrown
+	//     away when that WAL is replaced -- silently losing a write already
+	//     acknowledged to the client.
+	//
+	// The cost is that snapshots stall writes for their duration. On a large
+	// index that is a real latency cost; the documented path to removing it is
+	// a copy-on-write or fork-based snapshot in the C++ layer. Until then,
+	// correctness wins over tail latency.
+	mu sync.RWMutex
+
 	idx *hnsw.Index
 	w   *wal.WAL
 	cfg Config
@@ -112,6 +137,9 @@ func apply(idx *hnsw.Index, r wal.Record) error {
 }
 
 func (d *Index) Add(vec []float32, key hnsw.Key) error {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
 	if err := d.w.Append(wal.Record{Op: wal.OpAdd, ClientID: key.ClientID, Label: key.Label, Vector: vec}); err != nil {
 		return fmt.Errorf("durable: wal append: %w", err)
 	}
@@ -122,6 +150,9 @@ func (d *Index) Add(vec []float32, key hnsw.Key) error {
 }
 
 func (d *Index) MarkDeleted(key hnsw.Key) error {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
 	if err := d.w.Append(wal.Record{Op: wal.OpMarkDeleted, ClientID: key.ClientID, Label: key.Label}); err != nil {
 		return fmt.Errorf("durable: wal append: %w", err)
 	}
@@ -129,17 +160,29 @@ func (d *Index) MarkDeleted(key hnsw.Key) error {
 }
 
 func (d *Index) UnmarkDeleted(key hnsw.Key) error {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
 	if err := d.w.Append(wal.Record{Op: wal.OpUnmarkDeleted, ClientID: key.ClientID, Label: key.Label}); err != nil {
 		return fmt.Errorf("durable: wal append: %w", err)
 	}
 	return d.idx.UnmarkDeleted(key)
 }
 
+// Search takes no lock. It touches neither d.w nor any snapshot state, and the
+// C++ search path is already safe against concurrent inserts (per-node link
+// locks) and against a concurrent save() (both are read-only over the arena).
 func (d *Index) Search(query []float32, k, ef int) ([]hnsw.Result, error) {
 	return d.idx.Search(query, k, ef)
 }
 
+// Snapshot durably captures index state and compacts the WAL. It blocks all
+// writes for its duration -- see the comment on Index.mu for why that is
+// required rather than merely convenient.
 func (d *Index) Snapshot() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
 	tmpSnapshot := d.cfg.SnapshotPath + ".tmp"
 	if err := d.idx.Save(tmpSnapshot); err != nil {
 		return fmt.Errorf("durable: saving snapshot: %w", err)
@@ -195,8 +238,13 @@ func renameWithRetry(oldpath, newpath string) error {
 }
 
 func (d *Index) Close() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	return d.w.Close()
 }
 
-func (d *Index) Len() int       { return d.idx.Len() }
-func (d *Index) ActiveLen() int { return d.idx.ActiveLen() }
+func (d *Index) Len() int         { return d.idx.Len() }
+func (d *Index) ActiveLen() int   { return d.idx.ActiveLen() }
+func (d *Index) Dim() int         { return d.idx.Dim() }
+func (d *Index) Capacity() int    { return d.idx.Capacity() }
+func (d *Index) MemoryBytes() int { return d.idx.MemoryBytes() }

@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+// Internal API: coordinator -> shard. Never exposed to end clients.
+//
+// A shard owns exactly one durable.Index and knows nothing about any other
+// shard. All routing, fan-out and merging lives in the coordinator, which
+// keeps this service trivially testable in isolation.
+package vectorsearch.shard.v1;
+
+option go_package = "hnswdb/proto/shardpb;shardpb";
+
+service ShardService {
+  // Insert is idempotent-unfriendly by design: re-inserting an existing key
+  // returns ALREADY_EXISTS rather than overwriting, so a buggy retry cannot
+  // silently replace a vector. The coordinator decides whether to treat that
+  // as success (it does, for at-least-once delivery).
+  rpc Insert   (InsertRequest)   returns (InsertResponse);
+
+  // Delete is a soft delete (tombstone). The vector stays in the graph as a
+  // connector but is filtered from results.
+  rpc Delete   (DeleteRequest)   returns (DeleteResponse);
+  rpc Undelete (UndeleteRequest) returns (UndeleteResponse);
+
+  // Search returns this shard's local top-k. The coordinator merges these
+  // across shards; see CLUSTER_ARCHITECTURE.md section 4 for why every shard
+  // must be asked for the full k rather than k/numShards.
+  rpc Search   (SearchRequest)   returns (SearchResponse);
+
+  // Snapshot forces an immediate snapshot + WAL rotation. Blocks writes for
+  // its duration. Normally driven by the shard's own background ticker; this
+  // exists for tests and for operator-triggered snapshots before shutdown.
+  rpc Snapshot (SnapshotRequest) returns (SnapshotResponse);
+
+  rpc Stats    (StatsRequest)    returns (StatsResponse);
+}
+
+// Key identifies a vector. Two different clients may pick the same label for
+// unrelated vectors, so identity is the whole (client_id, label) pair.
+message Key {
+  uint64 client_id = 1;
+  uint64 label     = 2;
+}
+
+message ScoredKey {
+  Key   key      = 1;
+  float distance = 2;
+}
+
+// NOTE ON `repeated float`: proto3 packs repeated scalar numeric fields by
+// default, so no [packed = true] annotation is needed. The wire cost is
+// 4 bytes per dimension plus a length prefix -- 3076 bytes for a 768-dim
+// vector, which is why bulk loading should eventually use a client-streaming
+// RPC rather than one unary call per vector.
+message InsertRequest {
+  Key             key    = 1;
+  repeated float  vector = 2;
+}
+message InsertResponse {}
+
+message DeleteRequest  { Key key = 1; }
+message DeleteResponse {}
+
+message UndeleteRequest  { Key key = 1; }
+message UndeleteResponse {}
+
+message SearchRequest {
+  repeated float query = 1;
+  uint32 k  = 2;
+  // ef controls the recall/latency tradeoff. 0 means "use the shard's
+  // configured default", so the coordinator does not have to know it.
+  uint32 ef = 3;
+}
+
+message SearchResponse {
+  repeated ScoredKey results = 1;
+}
+
+message SnapshotRequest  {}
+message SnapshotResponse {}
+
+message StatsRequest {}
+message StatsResponse {
+  uint64 total_vectors  = 1;  // includes tombstoned
+  uint64 active_vectors = 2;  // excludes tombstoned
+  uint32 dim            = 3;
+  uint64 capacity       = 4;  // fixed at construction
+  uint64 memory_bytes   = 5;
+}

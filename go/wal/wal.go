@@ -1,4 +1,3 @@
-
 package wal
 
 import (
@@ -26,14 +25,9 @@ const (
 	version uint32 = 2 // v2: payload carries clientId(8) alongside label(8), see Record
 
 	headerSize = 8
-	
-	
-	
-	
-	maxPayloadLen = 1 << 24 
+
+	maxPayloadLen = 1 << 24
 )
-
-
 
 // ClientID and Label together identify the target vector -- two different
 // clients may legitimately reuse the same Label value, so both fields are
@@ -45,15 +39,11 @@ type Record struct {
 	Vector   []float32
 }
 
-
 type WAL struct {
 	mu   sync.Mutex
 	f    *os.File
 	path string
 }
-
-
-
 
 func Create(path string) (*WAL, error) {
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o644)
@@ -71,11 +61,6 @@ func Create(path string) (*WAL, error) {
 	}
 	return &WAL{f: f, path: path}, nil
 }
-
-
-
-
-
 
 func OpenForAppend(path string, truncateTo int64) (*WAL, error) {
 	f, err := os.OpenFile(path, os.O_RDWR, 0o644)
@@ -106,10 +91,6 @@ func writeHeader(f *os.File) error {
 	return nil
 }
 
-
-
-
-
 func (w *WAL) Append(r Record) error {
 	buf, err := encode(r)
 	if err != nil {
@@ -125,8 +106,6 @@ func (w *WAL) Append(r Record) error {
 	}
 	return nil
 }
-
-
 
 func (w *WAL) Sync() error {
 	w.mu.Lock()
@@ -203,9 +182,6 @@ func decode(p []byte) (Record, error) {
 	return Record{Op: op, ClientID: clientID, Label: label, Vector: vec}, nil
 }
 
-
-
-
 func Replay(path string, apply func(Record) error) (recordsApplied int, lastGoodOffset int64, err error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -236,7 +212,7 @@ func Replay(path string, apply func(Record) error) (recordsApplied int, lastGood
 	for {
 		rec, n, ok := readRecord(br)
 		if !ok {
-			break 
+			break
 		}
 		if err := apply(rec); err != nil {
 			return recordsApplied, offset, fmt.Errorf(
@@ -249,31 +225,28 @@ func Replay(path string, apply func(Record) error) (recordsApplied int, lastGood
 	return recordsApplied, offset, nil
 }
 
-
-
-
 func readRecord(r *bufio.Reader) (rec Record, bytesRead int, ok bool) {
 	var lenBuf [4]byte
 	if _, err := io.ReadFull(r, lenBuf[:]); err != nil {
-		return Record{}, 0, false 
+		return Record{}, 0, false
 	}
 	payloadLen := binary.LittleEndian.Uint32(lenBuf[:])
 	if payloadLen == 0 || payloadLen > maxPayloadLen {
-		return Record{}, 0, false 
+		return Record{}, 0, false
 	}
 
 	payload := make([]byte, payloadLen)
 	if _, err := io.ReadFull(r, payload); err != nil {
-		return Record{}, 0, false 
+		return Record{}, 0, false
 	}
 
 	var crcBuf [4]byte
 	if _, err := io.ReadFull(r, crcBuf[:]); err != nil {
-		return Record{}, 0, false 
+		return Record{}, 0, false
 	}
 	want := binary.LittleEndian.Uint32(crcBuf[:])
 	if crc32.ChecksumIEEE(payload) != want {
-		return Record{}, 0, false 
+		return Record{}, 0, false
 	}
 
 	rec, err := decode(payload)
