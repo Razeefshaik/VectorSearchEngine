@@ -1,11 +1,3 @@
-
-
-
-
-
-
-
-
 package durable
 
 import (
@@ -35,8 +27,6 @@ func testVec(seed float32) []float32 {
 	}
 	return v
 }
-
-
 
 func TestCrashRecovery(t *testing.T) {
 	dir := t.TempDir()
@@ -104,9 +94,6 @@ func TestCrashRecovery(t *testing.T) {
 	}
 }
 
-
-
-
 func TestSnapshotThenCrashRecovers(t *testing.T) {
 	dir := t.TempDir()
 	cfg := testConfig(dir)
@@ -123,7 +110,7 @@ func TestSnapshotThenCrashRecovers(t *testing.T) {
 	if err := idx.Snapshot(); err != nil {
 		t.Fatalf("Snapshot: %v", err)
 	}
-	for i := 20; i < 30; i++ { 
+	for i := 20; i < 30; i++ {
 		if err := idx.Add(testVec(float32(i)), hnsw.Key{ClientID: 1, Label: uint64(i)}); err != nil {
 			t.Fatalf("Add(%d): %v", i, err)
 		}
@@ -176,9 +163,6 @@ func TestDeleteSurvivesRecovery(t *testing.T) {
 		t.Fatalf("Len() after recovery = %d, want 5 (soft delete keeps the node)", recovered.Len())
 	}
 }
-
-
-
 
 func TestReopenTwiceIsIdempotent(t *testing.T) {
 	dir := t.TempDir()

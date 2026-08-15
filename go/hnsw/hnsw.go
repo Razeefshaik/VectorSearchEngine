@@ -1,10 +1,3 @@
-
-
-
-
-
-
-
 package hnsw
 
 /*
@@ -30,17 +23,11 @@ const (
 	L2     Space = C.HNSW_SPACE_L2
 )
 
-
-
-
-
-
 var (
 	ErrDuplicateLabel = errors.New("hnsw: label already exists")
 	ErrNotFound       = errors.New("hnsw: label not found")
 	ErrFull           = errors.New("hnsw: index is full")
 )
-
 
 type Index struct {
 	ptr *C.HnswIndex
@@ -68,8 +55,6 @@ func lastError() error {
 	return fmt.Errorf("hnsw: %s", msg)
 }
 
-
-
 func New(space Space, dim, maxElements, m, efConstruction int, seed uint64) (*Index, error) {
 	ptr := C.hnsw_new(C.int(space), C.size_t(dim), C.size_t(maxElements),
 		C.size_t(m), C.size_t(efConstruction), C.uint64_t(seed))
@@ -89,12 +74,10 @@ func (i *Index) Close() {
 	}
 }
 
-
 func (i *Index) Add(vec []float32, key Key) error {
 	if len(vec) != i.dim {
 		return fmt.Errorf("hnsw: expected %d dims, got %d", i.dim, len(vec))
 	}
-
 
 	rc := C.hnsw_add(i.ptr, (*C.float)(unsafe.Pointer(&vec[0])),
 		C.uint64_t(key.ClientID), C.uint64_t(key.Label))
@@ -110,8 +93,6 @@ func (i *Index) Add(vec []float32, key Key) error {
 		return lastError()
 	}
 }
-
-
 
 func (i *Index) Search(query []float32, k, ef int) ([]Result, error) {
 	if len(query) != i.dim {
@@ -153,9 +134,6 @@ func (i *Index) MarkDeleted(key Key) error {
 	}
 }
 
-
-
-
 func (i *Index) UnmarkDeleted(key Key) error {
 	switch rc := C.hnsw_unmark_deleted(i.ptr, C.uint64_t(key.ClientID), C.uint64_t(key.Label)); rc {
 	case C.HNSW_OK:
@@ -191,4 +169,5 @@ func Load(path string) (*Index, error) {
 func (i *Index) Len() int         { return int(C.hnsw_size(i.ptr)) }
 func (i *Index) ActiveLen() int   { return int(C.hnsw_active_size(i.ptr)) }
 func (i *Index) Dim() int         { return i.dim }
+func (i *Index) Capacity() int    { return int(C.hnsw_capacity(i.ptr)) }
 func (i *Index) MemoryBytes() int { return int(C.hnsw_memory_bytes(i.ptr)) }

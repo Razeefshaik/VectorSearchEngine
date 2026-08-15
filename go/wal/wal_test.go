@@ -55,10 +55,6 @@ func TestCreateAppendReplay(t *testing.T) {
 	}
 }
 
-
-
-
-
 func TestReplayTornTail(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "test.wal")
 
@@ -76,9 +72,6 @@ func TestReplayTornTail(t *testing.T) {
 		}
 	}
 
-	
-	
-	
 	tornBuf, err := encode(Record{Op: OpAdd, ClientID: 1, Label: 3, Vector: []float32{7, 8, 9}})
 	if err != nil {
 		t.Fatalf("encode: %v", err)
@@ -110,8 +103,6 @@ func TestReplayTornTail(t *testing.T) {
 		}
 	}
 
-	
-	
 	w2, err := OpenForAppend(path, lastGood)
 	if err != nil {
 		t.Fatalf("OpenForAppend after torn tail: %v", err)
