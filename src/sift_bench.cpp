@@ -131,11 +131,14 @@ int main(int argc, char** argv) {
     std::cout << "HNSW build: dim=" << base.d << " M=" << M
               << " efConstruction=" << EF_CONS << " space=L2\n";
 
+    // Single-tenant benchmark -- every vector belongs to the same fixed client.
+    constexpr uint64_t kBenchClientId = 1;
+
     Index index(Space::L2, base.d, base.n, M, EF_CONS);
 
     auto t0 = Clock::now();
     for (size_t i = 0; i < base.n; ++i) {
-        index.addPoint(base.data.data() + i * base.d, static_cast<label_t>(i));
+        index.addPoint(base.data.data() + i * base.d, Label{kBenchClientId, static_cast<uint64_t>(i)});
         if ((i + 1) % 100000 == 0)
             std::cout << "  inserted " << (i + 1) << " / " << base.n << "\n";
     }
@@ -176,7 +179,7 @@ int main(int argc, char** argv) {
             const int32_t* truth = gt.data.data() + q * gt.d;
             for (const auto& r : res)
                 for (size_t t = 0; t < K; ++t)
-                    if (static_cast<int32_t>(r.label) == truth[t]) { ++hits; break; }
+                    if (static_cast<int32_t>(r.label.label) == truth[t]) { ++hits; break; }
         }
 
         double recall = static_cast<double>(hits) / (NQUERY * K);

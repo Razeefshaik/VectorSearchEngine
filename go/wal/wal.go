@@ -1,29 +1,4 @@
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 package wal
 
 import (
@@ -47,8 +22,8 @@ const (
 )
 
 const (
-	magic   uint32 = 0x57414C31 
-	version uint32 = 1
+	magic   uint32 = 0x57414C31
+	version uint32 = 2 // v2: payload carries clientId(8) alongside label(8), see Record
 
 	headerSize = 8
 	
@@ -60,10 +35,14 @@ const (
 
 
 
+// ClientID and Label together identify the target vector -- two different
+// clients may legitimately reuse the same Label value, so both fields are
+// required to name a record's target unambiguously.
 type Record struct {
-	Op     OpType
-	Label  uint64
-	Vector []float32
+	Op       OpType
+	ClientID uint64
+	Label    uint64
+	Vector   []float32
 }
 
 
@@ -131,14 +110,6 @@ func writeHeader(f *os.File) error {
 
 
 
-
-
-
-
-
-
-
-
 func (w *WAL) Append(r Record) error {
 	buf, err := encode(r)
 	if err != nil {
@@ -186,16 +157,17 @@ func encode(r Record) ([]byte, error) {
 	}
 
 	dim := len(r.Vector)
-	payloadLen := 1 + 8 + 4 + dim*4 
+	payloadLen := 1 + 8 + 8 + 4 + dim*4 // op + clientId + label + dim + vector
 	buf := make([]byte, 4+payloadLen+4)
 
 	binary.LittleEndian.PutUint32(buf[0:4], uint32(payloadLen))
 	p := buf[4 : 4+payloadLen]
 	p[0] = byte(r.Op)
-	binary.LittleEndian.PutUint64(p[1:9], r.Label)
-	binary.LittleEndian.PutUint32(p[9:13], uint32(dim))
+	binary.LittleEndian.PutUint64(p[1:9], r.ClientID)
+	binary.LittleEndian.PutUint64(p[9:17], r.Label)
+	binary.LittleEndian.PutUint32(p[17:21], uint32(dim))
 	for i, v := range r.Vector {
-		binary.LittleEndian.PutUint32(p[13+i*4:17+i*4], math.Float32bits(v))
+		binary.LittleEndian.PutUint32(p[21+i*4:25+i*4], math.Float32bits(v))
 	}
 
 	crc := crc32.ChecksumIEEE(p)
@@ -204,13 +176,14 @@ func encode(r Record) ([]byte, error) {
 }
 
 func decode(p []byte) (Record, error) {
-	if len(p) < 13 {
+	if len(p) < 21 {
 		return Record{}, errors.New("wal: payload shorter than fixed header")
 	}
 	op := OpType(p[0])
-	label := binary.LittleEndian.Uint64(p[1:9])
-	dim := binary.LittleEndian.Uint32(p[9:13])
-	if uint64(len(p)) != 13+uint64(dim)*4 {
+	clientID := binary.LittleEndian.Uint64(p[1:9])
+	label := binary.LittleEndian.Uint64(p[9:17])
+	dim := binary.LittleEndian.Uint32(p[17:21])
+	if uint64(len(p)) != 21+uint64(dim)*4 {
 		return Record{}, errors.New("wal: payload length does not match declared dim")
 	}
 	switch op {
@@ -223,28 +196,12 @@ func decode(p []byte) (Record, error) {
 	if dim > 0 {
 		vec = make([]float32, dim)
 		for i := range vec {
-			bits := binary.LittleEndian.Uint32(p[13+i*4 : 17+i*4])
+			bits := binary.LittleEndian.Uint32(p[21+i*4 : 25+i*4])
 			vec[i] = math.Float32frombits(bits)
 		}
 	}
-	return Record{Op: op, Label: label, Vector: vec}, nil
+	return Record{Op: op, ClientID: clientID, Label: label, Vector: vec}, nil
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -269,7 +226,10 @@ func Replay(path string, apply func(Record) error) (recordsApplied int, lastGood
 		return 0, 0, fmt.Errorf("wal: %s: bad magic 0x%x -- not a WAL file", path, got)
 	}
 	if got := binary.LittleEndian.Uint32(hdr[4:8]); got != version {
-		return 0, 0, fmt.Errorf("wal: %s: version %d, this code expects %d", path, got, version)
+		return 0, 0, fmt.Errorf(
+			"wal: %s: version %d, this code expects %d (v2 added a clientId "+
+				"field to every record; old WAL files cannot be replayed and "+
+				"must be discarded)", path, got, version)
 	}
 
 	offset := int64(headerSize)
@@ -280,8 +240,8 @@ func Replay(path string, apply func(Record) error) (recordsApplied int, lastGood
 		}
 		if err := apply(rec); err != nil {
 			return recordsApplied, offset, fmt.Errorf(
-				"wal: applying record %d (op=%d label=%d): %w",
-				recordsApplied, rec.Op, rec.Label, err)
+				"wal: applying record %d (op=%d clientId=%d label=%d): %w",
+				recordsApplied, rec.Op, rec.ClientID, rec.Label, err)
 		}
 		recordsApplied++
 		offset += int64(n)

@@ -16,10 +16,10 @@ func TestCreateAppendReplay(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	records := []Record{
-		{Op: OpAdd, Label: 1, Vector: []float32{1, 2, 3}},
-		{Op: OpAdd, Label: 2, Vector: []float32{4, 5, 6}},
-		{Op: OpMarkDeleted, Label: 1},
-		{Op: OpAdd, Label: 3, Vector: []float32{7, 8, 9}},
+		{Op: OpAdd, ClientID: 1, Label: 1, Vector: []float32{1, 2, 3}},
+		{Op: OpAdd, ClientID: 1, Label: 2, Vector: []float32{4, 5, 6}},
+		{Op: OpMarkDeleted, ClientID: 1, Label: 1},
+		{Op: OpAdd, ClientID: 2, Label: 1, Vector: []float32{7, 8, 9}},
 	}
 	for _, r := range records {
 		if err := w.Append(r); err != nil {
@@ -67,8 +67,8 @@ func TestReplayTornTail(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	good := []Record{
-		{Op: OpAdd, Label: 1, Vector: []float32{1, 2, 3}},
-		{Op: OpAdd, Label: 2, Vector: []float32{4, 5, 6}},
+		{Op: OpAdd, ClientID: 1, Label: 1, Vector: []float32{1, 2, 3}},
+		{Op: OpAdd, ClientID: 1, Label: 2, Vector: []float32{4, 5, 6}},
 	}
 	for _, r := range good {
 		if err := w.Append(r); err != nil {
@@ -79,7 +79,7 @@ func TestReplayTornTail(t *testing.T) {
 	
 	
 	
-	tornBuf, err := encode(Record{Op: OpAdd, Label: 3, Vector: []float32{7, 8, 9}})
+	tornBuf, err := encode(Record{Op: OpAdd, ClientID: 1, Label: 3, Vector: []float32{7, 8, 9}})
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestReplayTornTail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenForAppend after torn tail: %v", err)
 	}
-	if err := w2.Append(Record{Op: OpAdd, Label: 99, Vector: []float32{0, 0, 0}}); err != nil {
+	if err := w2.Append(Record{Op: OpAdd, ClientID: 1, Label: 99, Vector: []float32{0, 0, 0}}); err != nil {
 		t.Fatalf("Append after recovery: %v", err)
 	}
 	if err := w2.Close(); err != nil {
@@ -159,8 +159,8 @@ func TestApplyErrorStopsReplayAndPropagates(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	for _, r := range []Record{
-		{Op: OpAdd, Label: 1, Vector: []float32{1}},
-		{Op: OpAdd, Label: 2, Vector: []float32{2}},
+		{Op: OpAdd, ClientID: 1, Label: 1, Vector: []float32{1}},
+		{Op: OpAdd, ClientID: 1, Label: 2, Vector: []float32{2}},
 	} {
 		if err := w.Append(r); err != nil {
 			t.Fatalf("Append: %v", err)
