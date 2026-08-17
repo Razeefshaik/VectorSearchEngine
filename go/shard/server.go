@@ -131,6 +131,12 @@ func (s *Server) Close() error {
 	return err
 }
 
+// Len exposes the shard's vector count directly, for white-box tests that
+// need to inspect a specific shard's state without going through gRPC (e.g.
+// confirming a key routed to exactly one shard). External callers should use
+// the Stats RPC instead.
+func (s *Server) Len() int { return s.idx.Len() }
+
 // ---------------------------------------------------------------------------
 // RPC handlers
 // ---------------------------------------------------------------------------

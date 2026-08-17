@@ -7,6 +7,7 @@ module hnswdb
 go 1.25.0
 
 require (
+	golang.org/x/sync v0.22.0
 	google.golang.org/grpc v1.83.0
 	google.golang.org/protobuf v1.36.12
 )
