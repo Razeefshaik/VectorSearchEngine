@@ -13,14 +13,25 @@
 
 set -euo pipefail
 
-OUT=go/proto/shardpb
-mkdir -p "$OUT"
+# paths=source_relative mirrors the SOURCE filename under --go_out, ignoring
+# go_package's directory component -- so each proto needs its own --go_out
+# matching its own go_package, not one shared directory for both.
 
+SHARD_OUT=go/proto/shardpb
+mkdir -p "$SHARD_OUT"
 protoc \
   --proto_path=proto \
-  --go_out="$OUT" --go_opt=paths=source_relative \
-  --go-grpc_out="$OUT" --go-grpc_opt=paths=source_relative \
+  --go_out="$SHARD_OUT" --go_opt=paths=source_relative \
+  --go-grpc_out="$SHARD_OUT" --go-grpc_opt=paths=source_relative \
   proto/shard.proto
 
+COORDINATOR_OUT=go/proto/coordinatorpb
+mkdir -p "$COORDINATOR_OUT"
+protoc \
+  --proto_path=proto \
+  --go_out="$COORDINATOR_OUT" --go_opt=paths=source_relative \
+  --go-grpc_out="$COORDINATOR_OUT" --go-grpc_opt=paths=source_relative \
+  proto/coordinator.proto
+
 echo "generated:"
-find "$OUT" -name '*.pb.go' | sort
+find "$SHARD_OUT" "$COORDINATOR_OUT" -name '*.pb.go' | sort
