@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+// Public API: client -> coordinator. This is the only service external
+// clients ever talk to; ShardService (shard.proto) is internal.
+package vectorsearch.coordinator.v1;
+
+option go_package = "hnswdb/proto/coordinatorpb;coordinatorpb";
+
+service VectorSearch {
+  rpc Insert (InsertRequest) returns (InsertResponse);
+  rpc Delete (DeleteRequest) returns (DeleteResponse);
+  rpc Search (SearchRequest) returns (SearchResponse);
+}
+
+message Key {
+  uint64 client_id = 1;
+  uint64 label     = 2;
+}
+
+message ScoredKey {
+  Key   key      = 1;
+  float distance = 2;
+}
+
+message InsertRequest {
+  Key            key    = 1;
+  repeated float vector = 2;
+}
+message InsertResponse {}
+
+message DeleteRequest  { Key key = 1; }
+message DeleteResponse {}
+
+message SearchRequest {
+  repeated float query = 1;
+  uint32 k  = 2;
+  uint32 ef = 3;
+
+  // If false (the default), any shard failure fails the whole search --
+  // a partial top-k is not a safe substitute for the true top-k, since the
+  // failed shard may have held the actual nearest neighbours. Set true only
+  // when availability matters more than completeness for this query.
+  bool allow_partial = 4;
+}
+
+message SearchResponse {
+  repeated ScoredKey results = 1;
+
+  // Always populated, even on full success, so degradation is never silent:
+  // a caller can log "8/8 shards" on the happy path and immediately notice
+  // when it becomes "7/8".
+  uint32 shards_queried = 2;
+  uint32 shards_failed  = 3;
+}
