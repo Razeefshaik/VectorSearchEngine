@@ -1,0 +1,73 @@
+# Local cluster as containers -- the same 4-shard + 1-coordinator topology
+# as scripts/start_local_cluster.ps1, but each process is its own container
+# on a private Docker network instead of a background OS process on Windows.
+#
+# Inside this network, shards are addressed by service name (shard0:7001,
+# not localhost:7001) -- Docker's embedded DNS resolves service names to
+# container IPs, which is what replaces the PowerShell script's manual port
+# bookkeeping.
+#
+# Usage:
+#   docker compose up --build       # build images + start everything
+#   docker compose ps               # see health status
+#   docker compose down             # stop (graceful: SIGTERM, same as Linux
+#                                    # always did -- no rpath/PATH/quoting
+#                                    # issues here, this is what the Windows
+#                                    # scripts were working around)
+#   docker compose down -v          # stop AND wipe the data volumes
+
+x-shard: &shard-defaults
+  build: .
+  image: hnsw-cluster:latest
+  restart: "no"
+  healthcheck:
+    test: ["CMD", "nc", "-z", "localhost", "7001"]
+    interval: 2s
+    timeout: 2s
+    retries: 15
+    start_period: 5s
+
+services:
+  shard0:
+    <<: *shard-defaults
+    command: ["shardd", "-listen", ":7001", "-data", "/data", "-dim", "128", "-max-elements", "500000", "-snapshot-interval", "2m"]
+    volumes: ["shard0-data:/data"]
+
+  shard1:
+    <<: *shard-defaults
+    command: ["shardd", "-listen", ":7001", "-data", "/data", "-dim", "128", "-max-elements", "500000", "-snapshot-interval", "2m"]
+    volumes: ["shard1-data:/data"]
+
+  shard2:
+    <<: *shard-defaults
+    command: ["shardd", "-listen", ":7001", "-data", "/data", "-dim", "128", "-max-elements", "500000", "-snapshot-interval", "2m"]
+    volumes: ["shard2-data:/data"]
+
+  shard3:
+    <<: *shard-defaults
+    command: ["shardd", "-listen", ":7001", "-data", "/data", "-dim", "128", "-max-elements", "500000", "-snapshot-interval", "2m"]
+    volumes: ["shard3-data:/data"]
+
+  coordinator:
+    build: .
+    image: hnsw-cluster:latest
+    command: ["coordinatord", "-listen", ":8000", "-shards", "shard0:7001,shard1:7001,shard2:7001,shard3:7001"]
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "8000"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+      start_period: 5s
+    ports:
+      - "8000:8000"   # the only port exposed to the host -- shards stay internal-only
+    depends_on:
+      shard0: { condition: service_healthy }
+      shard1: { condition: service_healthy }
+      shard2: { condition: service_healthy }
+      shard3: { condition: service_healthy }
+
+volumes:
+  shard0-data:
+  shard1-data:
+  shard2-data:
+  shard3-data:
