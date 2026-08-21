@@ -1,0 +1,2 @@
+time=2026-08-21T19:47:26.983+05:30 level=INFO msg="shard index ready" vectors=750 active=750 dim=8 snapshot="S:\\StudyResource\\TechBoooo\\Backend\\B projs\\VectorSearchEngine\\data\\shard0\\index.snapshot" wal="S:\\StudyResource\\TechBoooo\\Backend\\B projs\\VectorSearchEngine\\data\\shard0\\index.wal"
+time=2026-08-21T19:47:26.995+05:30 level=INFO msg="shard listening" addr=:7001 data="S:\\StudyResource\\TechBoooo\\Backend\\B projs\\VectorSearchEngine\\data\\shard0"
