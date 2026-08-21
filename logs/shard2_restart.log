@@ -1,0 +1,5 @@
+time=2026-08-21T19:43:52.554+05:30 level=INFO msg="shard index ready" vectors=1 active=1 dim=8 snapshot="S:\\StudyResource\\TechBoooo\\Backend\\B projs\\VectorSearchEngine\\data\\shard2\\index.snapshot" wal="S:\\StudyResource\\TechBoooo\\Backend\\B projs\\VectorSearchEngine\\data\\shard2\\index.wal"
+time=2026-08-21T19:43:52.564+05:30 level=INFO msg="shard listening" addr=:7003 data="S:\\StudyResource\\TechBoooo\\Backend\\B projs\\VectorSearchEngine\\data\\shard2"
+time=2026-08-21T19:45:52.582+05:30 level=INFO msg="snapshot complete" took=20.0785ms vectors=457
+time=2026-08-21T19:46:42.826+05:30 level=INFO msg="shutting down" signal=terminated
+time=2026-08-21T19:46:42.852+05:30 level=INFO msg="shutdown complete"
