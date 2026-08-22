@@ -1,0 +1,7 @@
+time=2026-08-21T19:47:27.641+05:30 level=INFO msg="shard healthy" shard=1 addr=localhost:7002
+time=2026-08-21T19:47:27.648+05:30 level=INFO msg="shard healthy" shard=0 addr=localhost:7001
+time=2026-08-21T19:47:27.653+05:30 level=INFO msg="shard healthy" shard=2 addr=localhost:7003
+time=2026-08-21T19:47:27.654+05:30 level=INFO msg="shard healthy" shard=3 addr=localhost:7004
+time=2026-08-21T19:47:27.655+05:30 level=INFO msg="coordinator listening" addr=:8000 shards="[localhost:7001 localhost:7002 localhost:7003 localhost:7004]"
+time=2026-08-21T22:06:09.728+05:30 level=INFO msg="shutting down" signal=terminated
+time=2026-08-21T22:06:10.011+05:30 level=INFO msg="shutdown complete"

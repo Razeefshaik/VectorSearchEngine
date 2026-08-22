@@ -1,0 +1,14 @@
+.git
+.idea
+.vscode
+build
+cmake-build-debug
+bin
+data
+logs
+*.exe
+*.dll
+*.wal
+*.snapshot
+*.fvecs
+*.ivecs
