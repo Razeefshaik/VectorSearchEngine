@@ -54,13 +54,15 @@ int hnsw_add(HnswIndex* idx, const float* vec, uint64_t client_id, uint64_t labe
 }
 
 int hnsw_search(HnswIndex* idx, const float* query, size_t k, size_t ef,
+                int filter_by_client, uint64_t filter_client_id,
                 uint64_t* out_client_ids, uint64_t* out_labels, float* out_distances) {
     if (!idx || !query || !out_client_ids || !out_labels || !out_distances) {
         setError("null argument");
         return HNSW_ERR_NULL;
     }
     try {
-        auto res = cast(idx)->search(query, k, ef);
+        auto res = cast(idx)->search(query, k, ef,
+                                      filter_by_client != 0, filter_client_id);
         for (size_t i = 0; i < res.size(); ++i) {
             out_client_ids[i] = res[i].label.clientId;
             out_labels[i] = res[i].label.label;

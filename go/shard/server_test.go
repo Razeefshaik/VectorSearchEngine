@@ -99,7 +99,7 @@ func TestInsertAndSearch(t *testing.T) {
 	}
 
 	resp, err := client.Search(ctx, &shardpb.SearchRequest{
-		Query: testVec(10), K: 5, Ef: 50,
+		Query: testVec(10), K: 5, Ef: 50, ClientId: 1,
 	})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
@@ -165,6 +165,21 @@ func TestSameLabelDifferentClientsCoexist(t *testing.T) {
 	if stats.GetTotalVectors() != 2 {
 		t.Fatalf("total = %d, want 2 (same label, different clients)", stats.GetTotalVectors())
 	}
+
+	// A search scoped to client 1 must never surface client 2's vector, even
+	// though both share label 99 and both are the graph's only two nodes.
+	resp, err := client.Search(ctx, &shardpb.SearchRequest{
+		Query: testVec(2), K: 5, Ef: 50, ClientId: 1,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	for _, r := range resp.GetResults() {
+		if r.GetKey().GetClientId() != 1 {
+			t.Fatalf("search scoped to client 1 returned a result from client %d: %+v",
+				r.GetKey().GetClientId(), r)
+		}
+	}
 }
 
 func TestDimensionMismatchIsInvalidArgument(t *testing.T) {
@@ -206,7 +221,7 @@ func TestDeleteFiltersFromResults(t *testing.T) {
 		t.Fatalf("Delete: %v", err)
 	}
 
-	resp, err := client.Search(ctx, &shardpb.SearchRequest{Query: testVec(5), K: 10, Ef: 50})
+	resp, err := client.Search(ctx, &shardpb.SearchRequest{Query: testVec(5), K: 10, Ef: 50, ClientId: 1})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -270,7 +285,7 @@ func TestRecoveryAcrossRestart(t *testing.T) {
 	// testVec(10) is exactly the vector stored under label 10, so it's an
 	// exact match -- but HNSW is approximate and nearby test vectors are
 	// closely spaced, so check top-3 for it rather than demanding rank #1.
-	resp, err := client2.Search(ctx, &shardpb.SearchRequest{Query: testVec(10), K: 3, Ef: 50})
+	resp, err := client2.Search(ctx, &shardpb.SearchRequest{Query: testVec(10), K: 3, Ef: 50, ClientId: 1})
 	if err != nil {
 		t.Fatalf("Search after restart: %v", err)
 	}

@@ -203,7 +203,7 @@ func (s *Server) Search(ctx context.Context, req *shardpb.SearchRequest) (*shard
 		return nil, status.FromContextError(err).Err()
 	}
 
-	results, err := s.idx.Search(req.GetQuery(), k, ef)
+	results, err := s.idx.SearchFiltered(req.GetQuery(), k, ef, req.GetClientId())
 	if err != nil {
 		return nil, toStatus(err, "search")
 	}

@@ -305,7 +305,11 @@ type SearchRequest struct {
 	// a partial top-k is not a safe substitute for the true top-k, since the
 	// failed shard may have held the actual nearest neighbours. Set true only
 	// when availability matters more than completeness for this query.
-	AllowPartial  bool `protobuf:"varint,4,opt,name=allow_partial,json=allowPartial,proto3" json:"allow_partial,omitempty"`
+	AllowPartial bool `protobuf:"varint,4,opt,name=allow_partial,json=allowPartial,proto3" json:"allow_partial,omitempty"`
+	// Scopes results to this client's own vectors. Forwarded verbatim to
+	// every shard's ShardService.Search -- see shard.proto for why there is
+	// no unfiltered mode over this RPC.
+	ClientId      uint64 `protobuf:"varint,5,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -366,6 +370,13 @@ func (x *SearchRequest) GetAllowPartial() bool {
 		return x.AllowPartial
 	}
 	return false
+}
+
+func (x *SearchRequest) GetClientId() uint64 {
+	if x != nil {
+		return x.ClientId
+	}
+	return 0
 }
 
 type SearchResponse struct {
@@ -448,12 +459,13 @@ const file_coordinator_proto_rawDesc = "" +
 	"\x0eInsertResponse\"C\n" +
 	"\rDeleteRequest\x122\n" +
 	"\x03key\x18\x01 \x01(\v2 .vectorsearch.coordinator.v1.KeyR\x03key\"\x10\n" +
-	"\x0eDeleteResponse\"h\n" +
+	"\x0eDeleteResponse\"\x85\x01\n" +
 	"\rSearchRequest\x12\x14\n" +
 	"\x05query\x18\x01 \x03(\x02R\x05query\x12\f\n" +
 	"\x01k\x18\x02 \x01(\rR\x01k\x12\x0e\n" +
 	"\x02ef\x18\x03 \x01(\rR\x02ef\x12#\n" +
-	"\rallow_partial\x18\x04 \x01(\bR\fallowPartial\"\x9e\x01\n" +
+	"\rallow_partial\x18\x04 \x01(\bR\fallowPartial\x12\x1b\n" +
+	"\tclient_id\x18\x05 \x01(\x04R\bclientId\"\x9e\x01\n" +
 	"\x0eSearchResponse\x12@\n" +
 	"\aresults\x18\x01 \x03(\v2&.vectorsearch.coordinator.v1.ScoredKeyR\aresults\x12%\n" +
 	"\x0eshards_queried\x18\x02 \x01(\rR\rshardsQueried\x12#\n" +

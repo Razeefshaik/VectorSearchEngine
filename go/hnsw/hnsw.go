@@ -94,7 +94,24 @@ func (i *Index) Add(vec []float32, key Key) error {
 	}
 }
 
+// Search is unfiltered: it considers every vector in the index regardless
+// of which client inserted it. Kept for the white-box tests that compare a
+// sharded, filtered search against an unsharded ground truth over the whole
+// index. Every real search path (shard.Server.Search) uses SearchFiltered.
 func (i *Index) Search(query []float32, k, ef int) ([]Result, error) {
+	return i.search(query, k, ef, false, 0)
+}
+
+// SearchFiltered scopes results to clientID's own vectors. A non-matching
+// vector still participates in graph traversal -- it just never appears in
+// the returned results -- the same tradeoff already made for soft-deleted
+// vectors, so recall within the target client's own vectors is unaffected
+// by how much of the index belongs to other clients.
+func (i *Index) SearchFiltered(query []float32, k, ef int, clientID uint64) ([]Result, error) {
+	return i.search(query, k, ef, true, clientID)
+}
+
+func (i *Index) search(query []float32, k, ef int, filterByClient bool, clientID uint64) ([]Result, error) {
 	if len(query) != i.dim {
 		return nil, fmt.Errorf("hnsw: expected %d dims, got %d", i.dim, len(query))
 	}
@@ -105,9 +122,15 @@ func (i *Index) Search(query []float32, k, ef int) ([]Result, error) {
 	labels := make([]uint64, k)
 	dists := make([]float32, k)
 
+	filterFlag := C.int(0)
+	if filterByClient {
+		filterFlag = 1
+	}
+
 	n := C.hnsw_search(i.ptr,
 		(*C.float)(unsafe.Pointer(&query[0])),
 		C.size_t(k), C.size_t(ef),
+		filterFlag, C.uint64_t(clientID),
 		(*C.uint64_t)(unsafe.Pointer(&clientIDs[0])),
 		(*C.uint64_t)(unsafe.Pointer(&labels[0])),
 		(*C.float)(unsafe.Pointer(&dists[0])))

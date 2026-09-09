@@ -283,12 +283,18 @@ func TestCoordinatorMatchesMonolithicIndex(t *testing.T) {
 	}
 
 	// Several query points, not just one -- a routing bug that only affects
-	// some shards could hide behind a single lucky query.
+	// some shards could hide behind a single lucky query. Each query is also
+	// scoped to a different client (cycling through all numClients), which
+	// doubles as the correctness proof for search isolation: the coordinator
+	// side is now filtered, so this only matches the monolithic ground truth
+	// if filtering actually recovers that client's own neighbours correctly
+	// out of a graph that's 4/5ths other clients' vectors.
 	for q := 0; q < 20; q++ {
 		query := testVec(float32(q) * 0.37)
+		clientID := uint64(q%numClients) + 1
 
 		coordResp, err := c.server.Search(ctx, &coordinatorpb.SearchRequest{
-			Query: query, K: uint32(k), Ef: 200,
+			Query: query, K: uint32(k), Ef: 200, ClientId: clientID,
 		})
 		if err != nil {
 			t.Fatalf("coordinator Search(query %d): %v", q, err)
@@ -296,8 +302,14 @@ func TestCoordinatorMatchesMonolithicIndex(t *testing.T) {
 		if got := int(coordResp.GetShardsFailed()); got != 0 {
 			t.Fatalf("query %d: %d shards failed, want 0", q, got)
 		}
+		for _, r := range coordResp.GetResults() {
+			if r.GetKey().GetClientId() != clientID {
+				t.Fatalf("query %d: search scoped to client %d returned a result from client %d",
+					q, clientID, r.GetKey().GetClientId())
+			}
+		}
 
-		monoResults, err := mono.Search(query, k, 200)
+		monoResults, err := mono.SearchFiltered(query, k, 200, clientID)
 		if err != nil {
 			t.Fatalf("monolithic Search(query %d): %v", q, err)
 		}
@@ -349,14 +361,14 @@ func TestSearchAllowPartialToleratesOneShardDown(t *testing.T) {
 	c.killShard(0)
 
 	_, err := c.server.Search(ctx, &coordinatorpb.SearchRequest{
-		Query: testVec(10), K: 5, Ef: 50, AllowPartial: false,
+		Query: testVec(10), K: 5, Ef: 50, AllowPartial: false, ClientId: 1,
 	})
 	if err == nil {
 		t.Fatal("expected Search to fail with one shard down and allowPartial=false")
 	}
 
 	resp, err := c.server.Search(ctx, &coordinatorpb.SearchRequest{
-		Query: testVec(10), K: 5, Ef: 50, AllowPartial: true,
+		Query: testVec(10), K: 5, Ef: 50, AllowPartial: true, ClientId: 1,
 	})
 	if err != nil {
 		t.Fatalf("Search with allowPartial=true should not fail outright: %v", err)

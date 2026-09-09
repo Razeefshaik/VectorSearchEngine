@@ -172,8 +172,17 @@ func (d *Index) UnmarkDeleted(key hnsw.Key) error {
 // Search takes no lock. It touches neither d.w nor any snapshot state, and the
 // C++ search path is already safe against concurrent inserts (per-node link
 // locks) and against a concurrent save() (both are read-only over the arena).
+//
+// Unfiltered -- see hnsw.Index.Search for why this stays that way. Real
+// callers (shard.Server.Search) use SearchFiltered.
 func (d *Index) Search(query []float32, k, ef int) ([]hnsw.Result, error) {
 	return d.idx.Search(query, k, ef)
+}
+
+// SearchFiltered scopes results to clientID's own vectors. Same
+// no-lock-needed reasoning as Search.
+func (d *Index) SearchFiltered(query []float32, k, ef int, clientID uint64) ([]hnsw.Result, error) {
+	return d.idx.SearchFiltered(query, k, ef, clientID)
 }
 
 // Snapshot durably captures index state and compacts the WAL. It blocks all

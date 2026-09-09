@@ -69,6 +69,13 @@ message SearchRequest {
   // ef controls the recall/latency tradeoff. 0 means "use the shard's
   // configured default", so the coordinator does not have to know it.
   uint32 ef = 3;
+
+  // Every real search is scoped to one client's own vectors -- a
+  // non-matching vector still participates in graph traversal (same
+  // tradeoff as a soft-deleted vector) but is never returned. There is no
+  // "unfiltered" mode over this RPC; that only exists at the hnsw.Index Go
+  // API for white-box tests comparing against an unsharded ground truth.
+  uint64 client_id = 4;
 }
 
 message SearchResponse {

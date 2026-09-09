@@ -93,7 +93,7 @@ func (s *Server) Search(ctx context.Context, req *coordinatorpb.SearchRequest) (
 		ef = s.defaultEf
 	}
 
-	result, err := Search(ctx, s.pool, req.GetQuery(), k, ef, req.GetAllowPartial())
+	result, err := Search(ctx, s.pool, req.GetQuery(), k, ef, req.GetAllowPartial(), req.GetClientId())
 	if err != nil {
 		return nil, err
 	}

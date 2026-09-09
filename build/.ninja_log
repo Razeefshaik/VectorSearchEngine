@@ -11,3 +11,12 @@
 47	9847	8085248291315502	CMakeFiles/hnsw_sift_bench.dir/src/sift_bench.cpp.obj	d3e031e25a2b292d
 9848	10164	8085248389324702	hnsw_sift_bench.exe	3a0e00a54ac7db2e
 21	10765	8085248291055811	CMakeFiles/hnsw_benchmark.dir/src/benchmark.cpp.obj	1ecd40683d8ca9e9
+276	12570	8106394630655663	CMakeFiles/hnsw_stress.dir/src/stress.cpp.obj	9d1db076fe8eced9
+74	12594	8106394628636774	CMakeFiles/hnsw.dir/src/hnsw_c.cpp.obj	56f1d3a892b1ba75
+289	12619	8106394630785677	CMakeFiles/hnsw_sift_bench.dir/src/sift_bench.cpp.obj	d3e031e25a2b292d
+264	13576	8106394630535648	CMakeFiles/hnsw_benchmark.dir/src/benchmark.cpp.obj	1ecd40683d8ca9e9
+12571	14310	8106394753602686	hnsw_stress.exe	2119b1db2d217d20
+12595	14321	8106394770883437	libhnsw.dll	1166a456f3f62a4f
+12595	14321	8106394770883437	libhnsw.dll.a	1166a456f3f62a4f
+12619	14325	8106394754081085	hnsw_sift_bench.exe	3a0e00a54ac7db2e
+13576	14332	8106394763660489	hnsw_benchmark.exe	b7a864e076b9389f

@@ -46,7 +46,7 @@ type GatherResult struct {
 // This can under-return -- a completely correct top-10 might not exist if a
 // shard is down, since that shard could hold some of the true nearest
 // neighbours. That tradeoff is the caller's to make, not this function's.
-func Search(ctx context.Context, pool *Pool, query []float32, k, ef int, allowPartial bool) (*GatherResult, error) {
+func Search(ctx context.Context, pool *Pool, query []float32, k, ef int, allowPartial bool, clientID uint64) (*GatherResult, error) {
 	numShards := pool.NumShards()
 
 	var (
@@ -61,9 +61,10 @@ func Search(ctx context.Context, pool *Pool, query []float32, k, ef int, allowPa
 		// same class of bug fixed in stress.cpp earlier in this project
 		g.Go(func() error {
 			resp, err := pool.Shard(s).Search(gctx, &shardpb.SearchRequest{
-				Query: query,
-				K:     uint32(k),
-				Ef:    uint32(ef),
+				Query:    query,
+				K:        uint32(k),
+				Ef:       uint32(ef),
+				ClientId: clientID,
 			})
 			if err != nil {
 				if allowPartial {

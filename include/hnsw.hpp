@@ -313,11 +313,20 @@ public:
 
     
 
-    std::vector<SearchResult> search(const float* query, size_t k, size_t ef) const {
+    // filterClient/filterClientId scope results to one client's own vectors,
+    // the same way filterDeleted scopes them away from tombstones: a
+    // non-matching node still participates in graph traversal (so the beam
+    // search doesn't lose connectivity through someone else's vectors), it's
+    // just never admitted into the returned top-k. Defaulted off so every
+    // existing caller (benchmarks, stress test, insert-time neighbour
+    // search) is unaffected.
+    std::vector<SearchResult> search(const float* query, size_t k, size_t ef,
+                                      bool filterClient = false,
+                                      uint64_t filterClientId = 0) const {
         std::vector<SearchResult> out;
         if (count_.load() == 0) return out;
 
-        
+
         std::vector<float> qbuf;
         const float* q = query;
         if (space_ == Space::Cosine) {
@@ -339,7 +348,8 @@ public:
         for (int l = curMaxLevel; l > 0; --l)
             cur = greedyDescend(q, kNone, cur, curDist, l);
 
-        auto top = searchLayer(q, kNone, cur, std::max(ef, k), 0, true);
+        auto top = searchLayer(q, kNone, cur, std::max(ef, k), 0, true,
+                                filterClient, filterClientId);
         while (top.size() > k) top.pop();
 
         out.resize(top.size());
@@ -528,16 +538,22 @@ private:
     
     
     MaxHeap searchLayer(const float* q, idx_t qid, idx_t entry, size_t ef,
-                        int level, bool filterDeleted) const {
+                        int level, bool filterDeleted,
+                        bool filterClient = false, uint64_t filterClientId = 0) const {
         auto visited = visitedPool_->acquire();
         visited->reset();
 
-        MaxHeap results;   
-        MinHeap frontier;  
+        MaxHeap results;
+        MinHeap frontier;
+
+        auto admits = [&](idx_t id) {
+            return (!filterDeleted || !deleted_[id]) &&
+                   (!filterClient || labels_[id].clientId == filterClientId);
+        };
 
         dist_t d0 = distance(q, qid, entry);
         frontier.emplace(d0, entry);
-        if (!filterDeleted || !deleted_[entry]) results.emplace(d0, entry);
+        if (admits(entry)) results.emplace(d0, entry);
         visited->testAndSet(entry);
 
         dist_t worst = results.empty() ? std::numeric_limits<dist_t>::max()
@@ -565,7 +581,7 @@ private:
                 dist_t d = distance(q, qid, cand);
                 if (results.size() < ef || d < worst) {
                     frontier.emplace(d, cand);
-                    if (!filterDeleted || !deleted_[cand]) {
+                    if (admits(cand)) {
                         results.emplace(d, cand);
                         if (results.size() > ef) results.pop();
                     }

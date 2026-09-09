@@ -392,7 +392,13 @@ type SearchRequest struct {
 	K     uint32                 `protobuf:"varint,2,opt,name=k,proto3" json:"k,omitempty"`
 	// ef controls the recall/latency tradeoff. 0 means "use the shard's
 	// configured default", so the coordinator does not have to know it.
-	Ef            uint32 `protobuf:"varint,3,opt,name=ef,proto3" json:"ef,omitempty"`
+	Ef uint32 `protobuf:"varint,3,opt,name=ef,proto3" json:"ef,omitempty"`
+	// Every real search is scoped to one client's own vectors -- a
+	// non-matching vector still participates in graph traversal (same
+	// tradeoff as a soft-deleted vector) but is never returned. There is no
+	// "unfiltered" mode over this RPC; that only exists at the hnsw.Index Go
+	// API for white-box tests comparing against an unsharded ground truth.
+	ClientId      uint64 `protobuf:"varint,4,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -444,6 +450,13 @@ func (x *SearchRequest) GetK() uint32 {
 func (x *SearchRequest) GetEf() uint32 {
 	if x != nil {
 		return x.Ef
+	}
+	return 0
+}
+
+func (x *SearchRequest) GetClientId() uint64 {
+	if x != nil {
+		return x.ClientId
 	}
 	return 0
 }
@@ -696,11 +709,12 @@ const file_shard_proto_rawDesc = "" +
 	"\x0eDeleteResponse\"?\n" +
 	"\x0fUndeleteRequest\x12,\n" +
 	"\x03key\x18\x01 \x01(\v2\x1a.vectorsearch.shard.v1.KeyR\x03key\"\x12\n" +
-	"\x10UndeleteResponse\"C\n" +
+	"\x10UndeleteResponse\"`\n" +
 	"\rSearchRequest\x12\x14\n" +
 	"\x05query\x18\x01 \x03(\x02R\x05query\x12\f\n" +
 	"\x01k\x18\x02 \x01(\rR\x01k\x12\x0e\n" +
-	"\x02ef\x18\x03 \x01(\rR\x02ef\"L\n" +
+	"\x02ef\x18\x03 \x01(\rR\x02ef\x12\x1b\n" +
+	"\tclient_id\x18\x04 \x01(\x04R\bclientId\"L\n" +
 	"\x0eSearchResponse\x12:\n" +
 	"\aresults\x18\x01 \x03(\v2 .vectorsearch.shard.v1.ScoredKeyR\aresults\"\x11\n" +
 	"\x0fSnapshotRequest\"\x12\n" +

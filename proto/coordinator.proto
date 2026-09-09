@@ -41,6 +41,11 @@ message SearchRequest {
   // failed shard may have held the actual nearest neighbours. Set true only
   // when availability matters more than completeness for this query.
   bool allow_partial = 4;
+
+  // Scopes results to this client's own vectors. Forwarded verbatim to
+  // every shard's ShardService.Search -- see shard.proto for why there is
+  // no unfiltered mode over this RPC.
+  uint64 client_id = 5;
 }
 
 message SearchResponse {
