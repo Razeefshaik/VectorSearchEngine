@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
@@ -60,11 +61,13 @@ func Search(ctx context.Context, pool *Pool, query []float32, k, ef int, allowPa
 		s := s // https://go.dev/wiki/CommonMistakes -- loop var capture,
 		// same class of bug fixed in stress.cpp earlier in this project
 		g.Go(func() error {
+			callStart := time.Now()
 			resp, err := pool.Shard(s).Search(gctx, &shardpb.SearchRequest{
 				Query: query,
 				K:     uint32(k),
 				Ef:    uint32(ef),
 			})
+			recordShardCall(s, "Search", callStart, err)
 			if err != nil {
 				if allowPartial {
 					mu.Lock()

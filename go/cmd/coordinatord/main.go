@@ -25,18 +25,23 @@ import (
 	"google.golang.org/grpc/reflection"
 
 	"hnswdb/coordinator"
+	"hnswdb/observability"
 	coordinatorpb "hnswdb/proto/coordinatorpb"
 )
 
 func main() {
 	var (
-		listen    = flag.String("listen", ":8000", "gRPC listen address")
-		shardAddr = flag.String("shards", "", "comma-separated shard addresses, in shard-index order")
-		defaultEf = flag.Int("default-ef", 100, "efSearch used when a request omits it")
+		listen        = flag.String("listen", ":8000", "gRPC listen address")
+		shardAddr     = flag.String("shards", "", "comma-separated shard addresses, in shard-index order")
+		defaultEf     = flag.Int("default-ef", 100, "efSearch used when a request omits it")
+		metricsListen = flag.String("metrics-listen", ":9105", "HTTP listen address for /metrics and /healthz")
 	)
 	flag.Parse()
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+	metricsSrv := observability.StartServer(*metricsListen, "coordinatord", log)
+	defer observability.Shutdown(metricsSrv)
 
 	if *shardAddr == "" {
 		log.Error("-shards is required, e.g. -shards localhost:7001,localhost:7002")
@@ -79,9 +84,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	grpcMetrics := observability.NewGRPCServerMetrics("vsgw_coordinator")
 	grpcServer := grpc.NewServer(
 		grpc.MaxRecvMsgSize(32*1024*1024),
 		grpc.MaxSendMsgSize(32*1024*1024),
+		grpc.UnaryInterceptor(grpcMetrics.UnaryInterceptor()),
 	)
 	coordinatorpb.RegisterVectorSearchServer(grpcServer, coordServer)
 
@@ -91,7 +98,7 @@ func main() {
 	reflection.Register(grpcServer)
 
 	go func() {
-		log.Info("coordinator listening", "addr", *listen, "shards", addrs)
+		log.Info("coordinator listening", "addr", *listen, "shards", addrs, "metrics", *metricsListen)
 		if err := grpcServer.Serve(lis); err != nil {
 			log.Error("grpc serve stopped", "err", err)
 		}

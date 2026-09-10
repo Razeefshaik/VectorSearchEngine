@@ -24,6 +24,7 @@ import (
 
 	"hnswdb/durable"
 	"hnswdb/hnsw"
+	"hnswdb/observability"
 	shardpb "hnswdb/proto/shardpb"
 	"hnswdb/shard"
 )
@@ -40,10 +41,14 @@ func main() {
 		spaceFlag        = flag.String("space", "cosine", "distance space: cosine | l2")
 		snapshotInterval = flag.Duration("snapshot-interval", 5*time.Minute, "background snapshot period (0 disables)")
 		seed             = flag.Uint64("seed", 100, "RNG seed for level assignment")
+		metricsListen    = flag.String("metrics-listen", ":9106", "HTTP listen address for /metrics and /healthz")
 	)
 	flag.Parse()
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+	metricsSrv := observability.StartServer(*metricsListen, "shardd", log)
+	defer observability.Shutdown(metricsSrv)
 
 	var space hnsw.Space
 	switch *spaceFlag {
@@ -91,9 +96,11 @@ func main() {
 
 	// A 768-dim float32 vector is ~3 KB on the wire; the 4 MB default would
 	// cap a bulk insert batch well below what is useful. Raise both ends.
+	grpcMetrics := observability.NewGRPCServerMetrics("vsgw_shard")
 	grpcServer := grpc.NewServer(
 		grpc.MaxRecvMsgSize(32*1024*1024),
 		grpc.MaxSendMsgSize(32*1024*1024),
+		grpc.UnaryInterceptor(grpcMetrics.UnaryInterceptor()),
 	)
 	shardpb.RegisterShardServiceServer(grpcServer, srv)
 
@@ -107,7 +114,7 @@ func main() {
 	reflection.Register(grpcServer)
 
 	go func() {
-		log.Info("shard listening", "addr", *listen, "data", *dataDir)
+		log.Info("shard listening", "addr", *listen, "data", *dataDir, "metrics", *metricsListen)
 		if err := grpcServer.Serve(lis); err != nil {
 			log.Error("grpc serve stopped", "err", err)
 		}
