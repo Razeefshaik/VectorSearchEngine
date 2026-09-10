@@ -28,30 +28,36 @@ x-shard: &shard-defaults
     start_period: 5s
 
 services:
+  # Metrics/health ports (9106-9109, one per shard; 9105 on the coordinator)
+  # are internal-only here, same as the gRPC ports -- nothing outside this
+  # compose file's network needs to reach them directly. When this file is
+  # wired into vectorsearch-gateway's combined stack (see that repo's
+  # docker-compose.yml and docs/MONITORING.md), Prometheus scrapes them by
+  # container DNS name over the shared network, not via a host port.
   shard0:
     <<: *shard-defaults
-    command: ["shardd", "-listen", ":7001", "-data", "/data", "-dim", "128", "-max-elements", "500000", "-snapshot-interval", "2m"]
+    command: ["shardd", "-listen", ":7001", "-metrics-listen", ":9106", "-data", "/data", "-dim", "128", "-max-elements", "500000", "-snapshot-interval", "2m"]
     volumes: ["shard0-data:/data"]
 
   shard1:
     <<: *shard-defaults
-    command: ["shardd", "-listen", ":7001", "-data", "/data", "-dim", "128", "-max-elements", "500000", "-snapshot-interval", "2m"]
+    command: ["shardd", "-listen", ":7001", "-metrics-listen", ":9106", "-data", "/data", "-dim", "128", "-max-elements", "500000", "-snapshot-interval", "2m"]
     volumes: ["shard1-data:/data"]
 
   shard2:
     <<: *shard-defaults
-    command: ["shardd", "-listen", ":7001", "-data", "/data", "-dim", "128", "-max-elements", "500000", "-snapshot-interval", "2m"]
+    command: ["shardd", "-listen", ":7001", "-metrics-listen", ":9106", "-data", "/data", "-dim", "128", "-max-elements", "500000", "-snapshot-interval", "2m"]
     volumes: ["shard2-data:/data"]
 
   shard3:
     <<: *shard-defaults
-    command: ["shardd", "-listen", ":7001", "-data", "/data", "-dim", "128", "-max-elements", "500000", "-snapshot-interval", "2m"]
+    command: ["shardd", "-listen", ":7001", "-metrics-listen", ":9106", "-data", "/data", "-dim", "128", "-max-elements", "500000", "-snapshot-interval", "2m"]
     volumes: ["shard3-data:/data"]
 
   coordinator:
     build: .
     image: hnsw-cluster:latest
-    command: ["coordinatord", "-listen", ":8000", "-shards", "shard0:7001,shard1:7001,shard2:7001,shard3:7001"]
+    command: ["coordinatord", "-listen", ":8000", "-metrics-listen", ":9105", "-shards", "shard0:7001,shard1:7001,shard2:7001,shard3:7001"]
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "8000"]
       interval: 2s

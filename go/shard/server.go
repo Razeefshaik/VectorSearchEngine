@@ -73,12 +73,14 @@ func New(cfg Config) (*Server, error) {
 		"snapshot", cfg.Durable.SnapshotPath,
 		"wal", cfg.Durable.WALPath)
 
-	return &Server{
+	s := &Server{
 		idx:    idx,
 		cfg:    cfg,
 		log:    log,
 		stopCh: make(chan struct{}),
-	}, nil
+	}
+	s.updateIndexGauges()
+	return s, nil
 }
 
 // Start launches the background snapshot ticker.
@@ -98,7 +100,9 @@ func (s *Server) Start() {
 				return
 			case <-t.C:
 				start := time.Now()
-				if err := s.idx.Snapshot(); err != nil {
+				err := s.idx.Snapshot()
+				recordSnapshot(start, err)
+				if err != nil {
 					// Not fatal: the WAL still holds everything since the last
 					// good snapshot, so durability is intact. It just means
 					// recovery will replay more and the WAL keeps growing.
@@ -122,7 +126,10 @@ func (s *Server) Close() error {
 		s.wg.Wait()
 
 		if s.cfg.SnapshotInterval > 0 {
-			if serr := s.idx.Snapshot(); serr != nil {
+			start := time.Now()
+			serr := s.idx.Snapshot()
+			recordSnapshot(start, serr)
+			if serr != nil {
 				s.log.Error("final snapshot failed", "err", serr)
 			}
 		}
@@ -157,6 +164,7 @@ func (s *Server) Insert(ctx context.Context, req *shardpb.InsertRequest) (*shard
 	if err := s.idx.Add(req.GetVector(), key); err != nil {
 		return nil, toStatus(err, "insert")
 	}
+	s.updateIndexGauges()
 	return &shardpb.InsertResponse{}, nil
 }
 
@@ -167,6 +175,7 @@ func (s *Server) Delete(ctx context.Context, req *shardpb.DeleteRequest) (*shard
 	if err := s.idx.MarkDeleted(keyFromProto(req.GetKey())); err != nil {
 		return nil, toStatus(err, "delete")
 	}
+	s.updateIndexGauges()
 	return &shardpb.DeleteResponse{}, nil
 }
 
@@ -177,6 +186,7 @@ func (s *Server) Undelete(ctx context.Context, req *shardpb.UndeleteRequest) (*s
 	if err := s.idx.UnmarkDeleted(keyFromProto(req.GetKey())); err != nil {
 		return nil, toStatus(err, "undelete")
 	}
+	s.updateIndexGauges()
 	return &shardpb.UndeleteResponse{}, nil
 }
 
@@ -219,7 +229,10 @@ func (s *Server) Search(ctx context.Context, req *shardpb.SearchRequest) (*shard
 }
 
 func (s *Server) Snapshot(ctx context.Context, _ *shardpb.SnapshotRequest) (*shardpb.SnapshotResponse, error) {
-	if err := s.idx.Snapshot(); err != nil {
+	start := time.Now()
+	err := s.idx.Snapshot()
+	recordSnapshot(start, err)
+	if err != nil {
 		return nil, toStatus(err, "snapshot")
 	}
 	return &shardpb.SnapshotResponse{}, nil

@@ -14,6 +14,8 @@ param(
     [int]$NumShards = 4,
     [int]$BasePort = 7001,
     [int]$CoordinatorPort = 8000,
+    [int]$MetricsBasePort = 9106,
+    [int]$CoordinatorMetricsPort = 9105,
     [int]$MaxElements = 50000,
     [switch]$Clean
 )
@@ -94,9 +96,11 @@ for ($i = 0; $i -lt $NumShards; $i++) {
     # unquoted path args get split and everything after the split point is
     # silently dropped by Go's flag parser (it stops at the first non-flag
     # token). Quote every value defensively so this can't bite again.
+    $metricsPort = $MetricsBasePort + $i
     $p = Start-Process -FilePath (Join-Path $binDir "shardd.exe") `
         -ArgumentList @(
             "-listen", "`":$port`"",
+            "-metrics-listen", "`":$metricsPort`"",
             "-data", "`"$shardData`"",
             "-dim", "`"$Dim`"",
             "-max-elements", "`"$MaxElements`"",
@@ -125,7 +129,7 @@ $shardList = $shardAddrs -join ","
 $coordLog = Join-Path $logDir "coordinator.log"
 Write-Host "starting coordinator on :$CoordinatorPort (shards: $shardList)"
 $cp = Start-Process -FilePath (Join-Path $binDir "coordinatord.exe") `
-    -ArgumentList @("-listen", "`":$CoordinatorPort`"", "-shards", "`"$shardList`"") `
+    -ArgumentList @("-listen", "`":$CoordinatorPort`"", "-metrics-listen", "`":$CoordinatorMetricsPort`"", "-shards", "`"$shardList`"") `
     -WorkingDirectory $binDir `
     -RedirectStandardOutput $coordLog `
     -RedirectStandardError "$coordLog.err" `
@@ -141,9 +145,9 @@ $pids | Out-File -FilePath (Join-Path $logDir "pids.txt")
 
 Write-Host ""
 Write-Host "cluster is up:"
-Write-Host "  coordinator : localhost:$CoordinatorPort"
+Write-Host "  coordinator : localhost:$CoordinatorPort  (metrics: localhost:$CoordinatorMetricsPort/metrics)"
 for ($i = 0; $i -lt $NumShards; $i++) {
-    Write-Host "  shard $i     : localhost:$($BasePort + $i)"
+    Write-Host "  shard $i     : localhost:$($BasePort + $i)  (metrics: localhost:$($MetricsBasePort + $i)/metrics)"
 }
 Write-Host ""
 Write-Host "dim=$Dim -- every Insert/Search must use vectors of this length"

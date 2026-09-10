@@ -45,3 +45,9 @@ COPY --from=cpp-build /src/build/libhnsw.so /usr/local/lib/libhnsw.so
 RUN ldconfig
 ENV LD_LIBRARY_PATH=/usr/local/lib
 COPY --from=go-build /out/shardd /out/coordinatord /usr/local/bin/
+
+# gRPC ports (7001 shardd default, 8000 coordinatord default) plus their
+# metrics/health HTTP ports (9106 shardd default, 9105 coordinatord
+# default) -- see go/observability and docker-compose.yml's per-service
+# -metrics-listen args.
+EXPOSE 7001 8000 9105 9106

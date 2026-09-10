@@ -3,6 +3,7 @@ package coordinator
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -50,10 +51,12 @@ func (s *Server) Insert(ctx context.Context, req *coordinatorpb.InsertRequest) (
 	key := hnsw.Key{ClientID: req.GetKey().GetClientId(), Label: req.GetKey().GetLabel()}
 	shard := s.router.ShardFor(key)
 
+	start := time.Now()
 	_, err := s.pool.Shard(shard).Insert(ctx, &shardpb.InsertRequest{
 		Key:    &shardpb.Key{ClientId: key.ClientID, Label: key.Label},
 		Vector: req.GetVector(),
 	})
+	recordShardCall(shard, "Insert", start, err)
 	if err != nil {
 		// Pass the shard's status code through unchanged (AlreadyExists,
 		// InvalidArgument, ResourceExhausted, ...) rather than wrapping it --
@@ -71,9 +74,11 @@ func (s *Server) Delete(ctx context.Context, req *coordinatorpb.DeleteRequest) (
 	key := hnsw.Key{ClientID: req.GetKey().GetClientId(), Label: req.GetKey().GetLabel()}
 	shard := s.router.ShardFor(key)
 
+	start := time.Now()
 	_, err := s.pool.Shard(shard).Delete(ctx, &shardpb.DeleteRequest{
 		Key: &shardpb.Key{ClientId: key.ClientID, Label: key.Label},
 	})
+	recordShardCall(shard, "Delete", start, err)
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +102,9 @@ func (s *Server) Search(ctx context.Context, req *coordinatorpb.SearchRequest) (
 	if err != nil {
 		return nil, err
 	}
+
+	shardsQueriedTotal.Add(float64(result.ShardsQueried))
+	shardsFailedTotal.Add(float64(result.ShardsFailed))
 
 	if result.ShardsFailed > 0 {
 		s.log.Warn("search completed with degraded shard coverage",
