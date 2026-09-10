@@ -1,0 +1,27 @@
+# Build artifacts -- the CMake/Ninja C++ build and the CLion IDE's own
+# build directory. Rebuilt by `cmake --build`, never hand-edited.
+/build/
+/cmake-build-debug/
+/cmake-build-release/
+
+# Compiled binaries and shared libraries, wherever they land (root-level
+# test/benchmark executables, go/ build output, the CMake build dir above).
+*.exe
+*.dll
+*.dll.a
+*.obj
+*.o
+*.a
+
+# bin/ is a build OUTPUT directory (see DEPLOYMENT.md section 3) -- shardd/
+# coordinatord/libhnsw get built or copied here, never authored here.
+/bin/
+
+# Runtime data: each shard's actual snapshot + WAL, and the logs/pids from
+# scripts/start_local_cluster.ps1. This is local test state, not source.
+/data/
+/logs/
+
+# Editor/IDE
+.idea/
+.vscode/
