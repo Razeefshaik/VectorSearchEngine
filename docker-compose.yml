@@ -36,23 +36,23 @@ services:
   # container DNS name over the shared network, not via a host port.
   shard0:
     <<: *shard-defaults
-    command: ["shardd", "-listen", ":7001", "-metrics-listen", ":9106", "-data", "/data", "-dim", "128", "-max-elements", "500000", "-snapshot-interval", "2m"]
-    volumes: ["shard0-data:/data"]
+    command: ["shardd", "-listen", ":7001", "-metrics-listen", ":9106", "-data", "/data", "-dim",  "${EMBEDDING_DIMENSION:-384}", "-max-elements", "500000", "-snapshot-interval", "2m"]
+    volumes: ["bugbrother-engine-shard0-data:/data"]
 
   shard1:
     <<: *shard-defaults
-    command: ["shardd", "-listen", ":7001", "-metrics-listen", ":9106", "-data", "/data", "-dim", "128", "-max-elements", "500000", "-snapshot-interval", "2m"]
-    volumes: ["shard1-data:/data"]
+    command: ["shardd", "-listen", ":7001", "-metrics-listen", ":9106", "-data", "/data", "-dim",  "${EMBEDDING_DIMENSION:-384}", "-max-elements", "500000", "-snapshot-interval", "2m"]
+    volumes: ["bugbrother-engine-shard1-data:/data"]
 
   shard2:
     <<: *shard-defaults
-    command: ["shardd", "-listen", ":7001", "-metrics-listen", ":9106", "-data", "/data", "-dim", "128", "-max-elements", "500000", "-snapshot-interval", "2m"]
-    volumes: ["shard2-data:/data"]
+    command: ["shardd", "-listen", ":7001", "-metrics-listen", ":9106", "-data", "/data", "-dim",  "${EMBEDDING_DIMENSION:-384}", "-max-elements", "500000", "-snapshot-interval", "2m"]
+    volumes: ["bugbrother-engine-shard2-data:/data"]
 
   shard3:
     <<: *shard-defaults
-    command: ["shardd", "-listen", ":7001", "-metrics-listen", ":9106", "-data", "/data", "-dim", "128", "-max-elements", "500000", "-snapshot-interval", "2m"]
-    volumes: ["shard3-data:/data"]
+    command: ["shardd", "-listen", ":7001", "-metrics-listen", ":9106", "-data", "/data", "-dim",  "${EMBEDDING_DIMENSION:-384}", "-max-elements", "500000", "-snapshot-interval", "2m"]
+    volumes: ["bugbrother-engine-shard3-data:/data"]
 
   coordinator:
     build: .
@@ -73,7 +73,8 @@ services:
       shard3: { condition: service_healthy }
 
 volumes:
-  shard0-data:
-  shard1-data:
-  shard2-data:
-  shard3-data:
+  bugbrother-engine-shard0-data:
+  bugbrother-engine-shard1-data:
+  bugbrother-engine-shard2-data:
+  bugbrother-engine-shard3-data:
+
